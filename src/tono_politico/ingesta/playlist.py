@@ -150,6 +150,67 @@ def verificar_cache_videos(
     return {"existentes": existentes, "faltantes": faltantes}
 
 
+def _ruta_dir_transcripciones(nombre_playlist: str) -> Path:
+    """Devuelve la ruta al directorio de transcripciones de una playlist."""
+    return DATA_DIR / nombre_playlist / f"transcripciones-{nombre_playlist}"
+
+
+def verificar_cache_transcripciones(
+    nombre_playlist: str, videos: list[VideoInfo]
+) -> dict[str, list[VideoInfo]]:
+    """Verifica qué transcripciones ya están en cache.
+
+    Revisa transcripciones-<nombre_playlist>/ y considera existente solo un
+    JSON válido cuyo campo video_id coincida con el video esperado. Un JSON
+    corrupto, vacío o con video_id distinto se trata como faltante para evitar
+    reutilizar cachés rotos o equivocados.
+
+    Args:
+        nombre_playlist: Nombre sanitizado de la playlist.
+        videos: Lista de videos de la playlist.
+
+    Returns:
+        Dict con dos listas:
+        - "existentes": videos cuya transcripción JSON válida está en cache.
+        - "faltantes": videos cuya transcripción falta o es inválida.
+    """
+    dir_transcripciones = _ruta_dir_transcripciones(nombre_playlist)
+
+    if not dir_transcripciones.exists():
+        logger.info(f"Cache de transcripciones no existe: {dir_transcripciones}")
+        return {"existentes": [], "faltantes": videos}
+
+    existentes: list[VideoInfo] = []
+    faltantes: list[VideoInfo] = []
+
+    for video in videos:
+        ruta_transcripcion = dir_transcripciones / f"{video.id}.json"
+        if _transcripcion_json_valida(ruta_transcripcion, video.id):
+            existentes.append(video)
+        else:
+            faltantes.append(video)
+
+    logger.info(
+        f"Cache transcripciones: {len(existentes)} existentes, {len(faltantes)} faltantes"
+    )
+
+    return {"existentes": existentes, "faltantes": faltantes}
+
+
+def _transcripcion_json_valida(ruta: Path, video_id: str) -> bool:
+    """Indica si un JSON de transcripción existe, parsea y coincide con video_id."""
+    if not ruta.exists():
+        return False
+
+    try:
+        data = json.loads(ruta.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        logger.warning(f"Transcripción inválida o corrupta: {ruta}")
+        return False
+
+    return data.get("video_id") == video_id
+
+
 def descargar_audio(
     video: VideoInfo, nombre_playlist: str
 ) -> Path:

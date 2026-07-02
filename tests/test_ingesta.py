@@ -1,8 +1,9 @@
-"""Tests para el Componente 1: Ingesta — métodos 1-3.
+"""Tests para el Componente 1: Ingesta — métodos 1-4.
 
 Cobertura:
 - obtener_info_playlist: playlist inválida, parseo correcto
 - verificar_cache_videos: carpeta inexistente, parcial, completa
+- verificar_cache_transcripciones: carpeta inexistente, parcial, completa, JSON inválido
 - descargar_audio: estructura de carpetas
 """
 
@@ -19,6 +20,7 @@ from tono_politico.ingesta.playlist import (
     _sanitizar_nombre_directorio,
     descargar_audio,
     obtener_info_playlist,
+    verificar_cache_transcripciones,
     verificar_cache_videos,
 )
 from tono_politico.models import PlaylistInfo, VideoInfo
@@ -284,6 +286,87 @@ class TestVerificarCacheVideos:
 
         existentes_ids = [v.id for v in estado["existentes"]]
         assert existentes_ids == ["vid001", "vid002", "vid003"]
+
+
+# ──────────────────────────────────────────────────────────
+# Tests: verificar_cache_transcripciones
+# ──────────────────────────────────────────────────────────
+
+class TestVerificarCacheTranscripciones:
+    def test_carpeta_inexistente_todo_faltante(self, playlist_mock, tmp_path):
+        """Si no existe transcripciones-<playlist>/, todo debe ser faltante."""
+        with patch("tono_politico.ingesta.playlist.DATA_DIR", tmp_path):
+            estado = verificar_cache_transcripciones(playlist_mock.nombre, playlist_mock.videos)
+
+        assert len(estado["existentes"]) == 0
+        assert len(estado["faltantes"]) == 3
+
+    def test_carpeta_vacia_todo_faltante(self, playlist_mock, tmp_path):
+        """Si la carpeta existe pero está vacía, todo es faltante."""
+        dir_transcripciones = tmp_path / playlist_mock.nombre / f"transcripciones-{playlist_mock.nombre}"
+        dir_transcripciones.mkdir(parents=True)
+
+        with patch("tono_politico.ingesta.playlist.DATA_DIR", tmp_path):
+            estado = verificar_cache_transcripciones(playlist_mock.nombre, playlist_mock.videos)
+
+        assert len(estado["existentes"]) == 0
+        assert len(estado["faltantes"]) == 3
+
+    def test_cache_parcial_detecta_faltantes(self, playlist_mock, tmp_path):
+        """Si existe 1 de 3 JSONs, detecta 1 existente y 2 faltantes."""
+        dir_transcripciones = tmp_path / playlist_mock.nombre / f"transcripciones-{playlist_mock.nombre}"
+        dir_transcripciones.mkdir(parents=True)
+        (dir_transcripciones / "vid001.json").write_text(
+            json.dumps({"video_id": "vid001", "raw_segments": []}), encoding="utf-8"
+        )
+
+        with patch("tono_politico.ingesta.playlist.DATA_DIR", tmp_path):
+            estado = verificar_cache_transcripciones(playlist_mock.nombre, playlist_mock.videos)
+
+        assert len(estado["existentes"]) == 1
+        assert estado["existentes"][0].id == "vid001"
+        assert {v.id for v in estado["faltantes"]} == {"vid002", "vid003"}
+
+    def test_todos_los_jsons_validos_nada_faltante(self, playlist_mock, tmp_path):
+        """Si todos los JSONs existen y son válidos, nada es faltante."""
+        dir_transcripciones = tmp_path / playlist_mock.nombre / f"transcripciones-{playlist_mock.nombre}"
+        dir_transcripciones.mkdir(parents=True)
+        for video in playlist_mock.videos:
+            (dir_transcripciones / f"{video.id}.json").write_text(
+                json.dumps({"video_id": video.id, "raw_segments": []}), encoding="utf-8"
+            )
+
+        with patch("tono_politico.ingesta.playlist.DATA_DIR", tmp_path):
+            estado = verificar_cache_transcripciones(playlist_mock.nombre, playlist_mock.videos)
+
+        assert len(estado["existentes"]) == 3
+        assert len(estado["faltantes"]) == 0
+
+    def test_json_corrupto_cuenta_como_faltante(self, playlist_mock, tmp_path):
+        """Un JSON corrupto no debe considerarse transcripción existente."""
+        dir_transcripciones = tmp_path / playlist_mock.nombre / f"transcripciones-{playlist_mock.nombre}"
+        dir_transcripciones.mkdir(parents=True)
+        (dir_transcripciones / "vid001.json").write_text("{json roto", encoding="utf-8")
+
+        with patch("tono_politico.ingesta.playlist.DATA_DIR", tmp_path):
+            estado = verificar_cache_transcripciones(playlist_mock.nombre, playlist_mock.videos)
+
+        assert len(estado["existentes"]) == 0
+        assert {v.id for v in estado["faltantes"]} == {"vid001", "vid002", "vid003"}
+
+    def test_json_con_video_id_distinto_cuenta_como_faltante(self, playlist_mock, tmp_path):
+        """Un JSON cuyo video_id no coincide evita reutilizar cache equivocado."""
+        dir_transcripciones = tmp_path / playlist_mock.nombre / f"transcripciones-{playlist_mock.nombre}"
+        dir_transcripciones.mkdir(parents=True)
+        (dir_transcripciones / "vid001.json").write_text(
+            json.dumps({"video_id": "otro_id", "raw_segments": []}), encoding="utf-8"
+        )
+
+        with patch("tono_politico.ingesta.playlist.DATA_DIR", tmp_path):
+            estado = verificar_cache_transcripciones(playlist_mock.nombre, playlist_mock.videos)
+
+        assert len(estado["existentes"]) == 0
+        assert {v.id for v in estado["faltantes"]} == {"vid001", "vid002", "vid003"}
 
 
 # ──────────────────────────────────────────────────────────
