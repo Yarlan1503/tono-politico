@@ -267,6 +267,59 @@ def descargar_audio(
     return ruta_audio
 
 
+def transcribir(
+    audio_path: str | Path, modelo: str = "large-v3", idioma: str = "es"
+) -> list[dict[str, str | float]]:
+    """Transcribe un archivo de audio con OpenAI Whisper oficial.
+
+    Args:
+        audio_path: Ruta al archivo de audio local.
+        modelo: Nombre del modelo Whisper a cargar (por defecto large-v3).
+        idioma: Código de idioma para forzar la transcripción (por defecto es).
+
+    Returns:
+        Lista de segmentos normalizados con texto y timestamps:
+        [{"texto": str, "t_start": float, "t_end": float}, ...]
+
+    Raises:
+        FileNotFoundError: Si el archivo de audio no existe.
+    """
+    ruta_audio = Path(audio_path)
+    if not ruta_audio.exists():
+        raise FileNotFoundError(f"Audio no encontrado: {ruta_audio}")
+
+    # Import diferido: permite testear sin tener Whisper instalado y evita coste al importar módulo.
+    import whisper  # type: ignore[import-not-found]
+
+    logger.info(f"Cargando modelo Whisper: {modelo}")
+    modelo_whisper = whisper.load_model(modelo)
+
+    logger.info(f"Transcribiendo audio: {ruta_audio}")
+    resultado = modelo_whisper.transcribe(
+        str(ruta_audio),
+        language=idioma,
+        word_timestamps=True,
+        fp16=False,  # CPU-friendly; evita warning/error de fp16 sin GPU.
+    )
+
+    segmentos: list[dict[str, str | float]] = []
+    for segmento in resultado.get("segments", []):
+        texto = (segmento.get("text") or "").strip()
+        if not texto:
+            continue
+
+        segmentos.append(
+            {
+                "texto": texto,
+                "t_start": float(segmento.get("start", 0.0)),
+                "t_end": float(segmento.get("end", 0.0)),
+            }
+        )
+
+    logger.info(f"Transcripción generó {len(segmentos)} segmentos")
+    return segmentos
+
+
 def _sanitizar_nombre_directorio(nombre: str) -> str:
     """Sanitiza un string para usarlo como nombre de directorio seguro."""
     # Reemplazar caracteres problemáticos

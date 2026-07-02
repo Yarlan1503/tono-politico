@@ -1,15 +1,17 @@
-"""Tests para el Componente 1: Ingesta — métodos 1-4.
+"""Tests para el Componente 1: Ingesta — métodos 1-5.
 
 Cobertura:
 - obtener_info_playlist: playlist inválida, parseo correcto
 - verificar_cache_videos: carpeta inexistente, parcial, completa
 - verificar_cache_transcripciones: carpeta inexistente, parcial, completa, JSON inválido
+- transcribir: llamada a Whisper, normalización de segmentos, audio inexistente
 - descargar_audio: estructura de carpetas
 """
 
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -20,6 +22,7 @@ from tono_politico.ingesta.playlist import (
     _sanitizar_nombre_directorio,
     descargar_audio,
     obtener_info_playlist,
+    transcribir,
     verificar_cache_transcripciones,
     verificar_cache_videos,
 )
@@ -367,6 +370,89 @@ class TestVerificarCacheTranscripciones:
 
         assert len(estado["existentes"]) == 0
         assert {v.id for v in estado["faltantes"]} == {"vid001", "vid002", "vid003"}
+
+
+# ──────────────────────────────────────────────────────────
+# Tests: transcribir
+# ──────────────────────────────────────────────────────────
+
+class FakeWhisperModel:
+    def __init__(self, resultado):
+        self.resultado = resultado
+        self.transcribe_calls = []
+
+    def transcribe(self, audio_path, **kwargs):
+        self.transcribe_calls.append({"audio_path": audio_path, "kwargs": kwargs})
+        return self.resultado
+
+
+class FakeWhisperModule:
+    def __init__(self, resultado):
+        self.modelo_cargado = None
+        self.model = FakeWhisperModel(resultado)
+
+    def load_model(self, modelo):
+        self.modelo_cargado = modelo
+        return self.model
+
+
+class TestTranscribir:
+    def test_transcribe_audio_con_whisper_y_normaliza_segmentos(self, tmp_path, monkeypatch):
+        """transcribir debe cargar Whisper, llamar transcribe y normalizar segmentos."""
+        audio_path = tmp_path / "audio.wav"
+        audio_path.write_bytes(b"fake audio")
+        resultado_whisper = {
+            "text": " Hola mundo. Segundo segmento. ",
+            "segments": [
+                {"start": 0, "end": 1.5, "text": " Hola mundo. "},
+                {"start": 1.5, "end": 3, "text": " Segundo segmento. "},
+            ],
+        }
+        fake_whisper = FakeWhisperModule(resultado_whisper)
+        monkeypatch.setitem(sys.modules, "whisper", fake_whisper)
+
+        segmentos = transcribir(audio_path, modelo="large-v3", idioma="es")
+
+        assert fake_whisper.modelo_cargado == "large-v3"
+        assert fake_whisper.model.transcribe_calls == [
+            {
+                "audio_path": str(audio_path),
+                "kwargs": {
+                    "language": "es",
+                    "word_timestamps": True,
+                    "fp16": False,
+                },
+            }
+        ]
+        assert segmentos == [
+            {"texto": "Hola mundo.", "t_start": 0.0, "t_end": 1.5},
+            {"texto": "Segundo segmento.", "t_start": 1.5, "t_end": 3.0},
+        ]
+
+    def test_ignora_segmentos_sin_texto(self, tmp_path, monkeypatch):
+        """Segmentos vacíos o whitespace no deben pasar al siguiente componente."""
+        audio_path = tmp_path / "audio.wav"
+        audio_path.write_bytes(b"fake audio")
+        resultado_whisper = {
+            "segments": [
+                {"start": 0, "end": 1, "text": "   "},
+                {"start": 1, "end": 2, "text": " Texto válido. "},
+            ]
+        }
+        monkeypatch.setitem(sys.modules, "whisper", FakeWhisperModule(resultado_whisper))
+
+        segmentos = transcribir(audio_path)
+
+        assert segmentos == [
+            {"texto": "Texto válido.", "t_start": 1.0, "t_end": 2.0},
+        ]
+
+    def test_audio_inexistente_lanza_file_not_found(self, tmp_path):
+        """Si el archivo de audio no existe, falla antes de cargar Whisper."""
+        audio_path = tmp_path / "no_existe.wav"
+
+        with pytest.raises(FileNotFoundError, match="Audio no encontrado"):
+            transcribir(audio_path)
 
 
 # ──────────────────────────────────────────────────────────
