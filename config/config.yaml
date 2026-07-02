@@ -1,0 +1,37 @@
+# Configuración de la herramienta de análisis de tono político
+# Los valores aquí definidos son los defaults; pueden sobreescribirse vía CLI.
+
+# Componente 1: Ingesta
+ingesta:
+  whisper_model: "large-v3"        # Modelo de Whisper: tiny, base, small, medium, large-v3
+  whisper_device: "cpu"             # Dispositivo: cpu o cuda
+  whisper_language: "es"            # Idioma forzado para Whisper (español)
+
+# Componente 2: Segmentación
+segmentacion:
+  pausa_minima: 1.5                 # Segundos de silencio para marcar frontera tópica
+  min_oraciones: 2                  # Mínimo de oraciones por segmento semántico
+  max_oraciones: 8                  # Máximo de oraciones por segmento semántico
+  embedding_model: "paraphrase-multilingual-MiniLM-L12-v2"
+  similitud_umbral: 0.65            # Cosine similarity por debajo del cual se corta
+
+# Componente 3: Temas (BERTopic)
+temas:
+  embedding_model: "paraphrase-multilingual-mpnet-base-v2"
+  min_topic_size: 15
+  n_gram_range: [1, 2]             # Unigramas y bigramas
+  nr_topics: "auto"                # auto | número fijo
+
+# Componente 5: Tono (Zero-shot)
+tono:
+  modelo_base: "joeddav/xlm-roberta-large-xnli"
+  
+  sentimiento_labels: ["positivo", "negativo", "neutral"]
+  
+  stance_labels: ["a favor", "en contra", "neutral"]
+  
+  # Eje primario — tipo de discurso (mutuamente excluyente)
+  tono_primario_labels: ["populista", "técnico", "institucional"]
+  
+  # Eje secundario — tono retórico (multi-label)
+  tono_secundario_labels: ["confrontativo", "conciliador", "emocional", "nacionalista", "victimizante"]
