@@ -52,3 +52,6 @@ Thumbs.db
 
 # Whisper models (se descargan automáticamente)
 *.pt
+
+# Agent docs (local only)
+AGENTS.md
