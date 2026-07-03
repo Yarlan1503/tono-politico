@@ -404,8 +404,24 @@ class TestTranscribir:
         resultado_whisper = {
             "text": " Hola mundo. Segundo segmento. ",
             "segments": [
-                {"start": 0, "end": 1.5, "text": " Hola mundo. "},
-                {"start": 1.5, "end": 3, "text": " Segundo segmento. "},
+                {
+                    "start": 0,
+                    "end": 1.5,
+                    "text": " Hola mundo. ",
+                    "words": [
+                        {"word": " Hola", "start": 0.0, "end": 0.6, "probability": 0.91},
+                        {"word": " mundo.", "start": 0.6, "end": 1.5, "probability": 0.88},
+                    ],
+                },
+                {
+                    "start": 1.5,
+                    "end": 3,
+                    "text": " Segundo segmento. ",
+                    "words": [
+                        {"word": " Segundo", "start": 1.5, "end": 2.1, "probability": 0.95},
+                        {"word": " segmento.", "start": 2.1, "end": 3.0, "probability": 0.93},
+                    ],
+                },
             ],
         }
         fake_whisper = FakeWhisperModule(resultado_whisper)
@@ -425,8 +441,24 @@ class TestTranscribir:
             }
         ]
         assert segmentos == [
-            {"texto": "Hola mundo.", "t_start": 0.0, "t_end": 1.5},
-            {"texto": "Segundo segmento.", "t_start": 1.5, "t_end": 3.0},
+            {
+                "texto": "Hola mundo.",
+                "t_start": 0.0,
+                "t_end": 1.5,
+                "words": [
+                    {"word": "Hola", "start": 0.0, "end": 0.6, "probability": 0.91},
+                    {"word": "mundo.", "start": 0.6, "end": 1.5, "probability": 0.88},
+                ],
+            },
+            {
+                "texto": "Segundo segmento.",
+                "t_start": 1.5,
+                "t_end": 3.0,
+                "words": [
+                    {"word": "Segundo", "start": 1.5, "end": 2.1, "probability": 0.95},
+                    {"word": "segmento.", "start": 2.1, "end": 3.0, "probability": 0.93},
+                ],
+            },
         ]
 
     def test_ignora_segmentos_sin_texto(self, tmp_path, monkeypatch):
@@ -444,7 +476,7 @@ class TestTranscribir:
         segmentos = transcribir(audio_path)
 
         assert segmentos == [
-            {"texto": "Texto válido.", "t_start": 1.0, "t_end": 2.0},
+            {"texto": "Texto válido.", "t_start": 1.0, "t_end": 2.0, "words": []},
         ]
 
     def test_audio_inexistente_lanza_file_not_found(self, tmp_path):

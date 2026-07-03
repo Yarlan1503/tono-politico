@@ -269,7 +269,7 @@ def descargar_audio(
 
 def transcribir(
     audio_path: str | Path, modelo: str = "large-v3", idioma: str = "es"
-) -> list[dict[str, str | float]]:
+) -> list[dict[str, object]]:
     """Transcribe un archivo de audio con OpenAI Whisper oficial.
 
     Args:
@@ -278,8 +278,19 @@ def transcribir(
         idioma: Código de idioma para forzar la transcripción (por defecto es).
 
     Returns:
-        Lista de segmentos normalizados con texto y timestamps:
-        [{"texto": str, "t_start": float, "t_end": float}, ...]
+        Lista de segmentos normalizados con texto, timestamps y palabras:
+        [
+            {
+                "texto": str,
+                "t_start": float,
+                "t_end": float,
+                "words": [
+                    {"word": str, "start": float, "end": float, "probability": float | None},
+                    ...
+                ],
+            },
+            ...
+        ]
 
     Raises:
         FileNotFoundError: Si el archivo de audio no existe.
@@ -302,7 +313,7 @@ def transcribir(
         fp16=False,  # CPU-friendly; evita warning/error de fp16 sin GPU.
     )
 
-    segmentos: list[dict[str, str | float]] = []
+    segmentos: list[dict[str, object]] = []
     for segmento in resultado.get("segments", []):
         texto = (segmento.get("text") or "").strip()
         if not texto:
@@ -313,11 +324,39 @@ def transcribir(
                 "texto": texto,
                 "t_start": float(segmento.get("start", 0.0)),
                 "t_end": float(segmento.get("end", 0.0)),
+                "words": _normalizar_words(segmento.get("words", [])),
             }
         )
 
     logger.info(f"Transcripción generó {len(segmentos)} segmentos")
     return segmentos
+
+
+def _normalizar_words(words: object) -> list[dict[str, object]]:
+    """Normaliza los timestamps por palabra de Whisper a tipos JSON-friendly."""
+    if not isinstance(words, list):
+        return []
+
+    normalizadas: list[dict[str, object]] = []
+    for word_data in words:
+        if not isinstance(word_data, dict):
+            continue
+
+        palabra = str(word_data.get("word") or "").strip()
+        if not palabra:
+            continue
+
+        probability = word_data.get("probability")
+        normalizadas.append(
+            {
+                "word": palabra,
+                "start": float(word_data.get("start", 0.0)),
+                "end": float(word_data.get("end", 0.0)),
+                "probability": float(probability) if probability is not None else None,
+            }
+        )
+
+    return normalizadas
 
 
 def _sanitizar_nombre_directorio(nombre: str) -> str:
