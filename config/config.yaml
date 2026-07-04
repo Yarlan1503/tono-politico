@@ -9,13 +9,13 @@ project:
   idioma: "es"
   random_state: 42
 
-# Componente 1: Ingesta — YouTube playlist -> Whisper -> VideoTranscript[]
+# Componente 1: Ingesta — YouTube playlist → Whisper → VideoTranscript[]
 ingesta:
   data_dir: "data"
   whisper_model: "large-v3"
   idioma: "es"
 
-# Componente 2: Segmentación — VideoTranscript[] -> Segmento[]
+# Componente 2: Segmentación — VideoTranscript[] → Segmento[]
 segmentacion:
   spacy_model: "es_core_news_lg"
   embedding_model: "LiquidAI/LFM2.5-Embedding-350M"
@@ -24,7 +24,7 @@ segmentacion:
   max_oraciones: 8
   max_palabras: 150
 
-# Componente 3: Temas — Segmento[] -> ResultadoTemas
+# Componente 3: Temas — Segmento[] → ResultadoTemas
 temas:
   embedding_model: "LiquidAI/LFM2.5-Embedding-350M"
   min_topic_size: 3
@@ -42,33 +42,42 @@ temas:
     calculate_probabilities: true
     verbose: false
 
-# Componente 4: Filtrado — ResultadoTemas -> ResultadoFiltrado
+# Componente 4: Filtrado — ResultadoTemas → ResultadoFiltrado
 filtrado:
-  estado: "mvp_implementado"
-  usar_topicos: true
   min_relevancia: 0.35
   incluir_outliers: false
 
-# Componente 5: Tono — pendiente.
+# Componente 5: Tono — ResultadoFiltrado → ResultadoTono
+# Arquitectura híbrida: embeddings para dimensiones multi-label + LLM para stance.
 tono:
-  estado: "pendiente"
-  modelo_base: "joeddav/xlm-roberta-large-xnli"
-  sentimiento_labels:
-    ["esperanza", "angustia", "indignación", "orgullo", "empatía"]
-  stance_labels: ["apoyo", "rehazo"]
-  ideologia_labels:
-    [
-      "populista",
-      "tecnocrata",
-      "estatista",
-      "corporativista",
-      "nacionalista",
-      "globalista",
-    ]
-  estilo_discursivo_labels: []
+  embedding_model: "LiquidAI/LFM2.5-Embedding-350M"
+  llm_model: "LiquidAI/LFM2.5-1.2B-Instruct"
+  device: "cpu"
 
-# Componente 6: Salida — pendiente.
+  # Stance (vía LLM con actor + tema + few-shot balanceado)
+  stance_labels: ["apoyo", "rechazo"]
+
+  # Intensidad antagónica (vía embeddings, 5 prototipos escalonados 1-5)
+  intensidad_niveles: 5
+
+  # Lógica política (vía embeddings, multi-label)
+  logica_politica_labels:
+    ["nacionalista", "globalista", "populista", "tecnocrata", "corporativista", "estatista"]
+
+  # Sentimiento (vía embeddings, multi-label)
+  sentimiento_labels:
+    ["esperanza", "angustia", "indignacion", "orgullo", "empatia"]
+
+  # Estilo discursivo (vía embeddings, multi-label)
+  estilo_discursivo_labels:
+    ["directo", "academico", "confrontativo", "conciliador", "catastrofista", "testimonial"]
+
+  # Función discursiva (vía embeddings, multi-label)
+  funcion_discursiva_labels:
+    ["critica", "propuesta", "narrativa_personal"]
+
+# Componente 6: Salida — ResultadoTono → InformeTono (JSON + Markdown)
 salida:
-  estado: "pendiente"
-  formato: "json"
+  formatos: ["json", "markdown"]
   incluir_provenance: true
+  redondear_scores: 4
