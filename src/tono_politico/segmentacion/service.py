@@ -131,6 +131,8 @@ class SegmentacionService:
                 SentenceTransformer,
             )
 
-            logger.info("Cargando modelo de embeddings sentence-transformers")
-            self._embedder = SentenceTransformer("all-MiniLM-L6-v2")
+            logger.info("Cargando modelo: LiquidAI/LFM2.5-Embedding-350M")
+            self._embedder = SentenceTransformer(
+                "LiquidAI/LFM2.5-Embedding-350M"
+            )
         return self._embedder

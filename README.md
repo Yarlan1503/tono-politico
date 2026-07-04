@@ -1,45 +1,68 @@
 # Tono Político
 
-Herramienta de análisis NLP para determinar el tono de un actor político configurable respecto a un tema, usando transcripciones de videos de YouTube como fuente.
+Herramienta NLP para analizar el tono de actores políticos mexicanos a partir de transcripciones de YouTube.
 
-## Tres lecturas de tono
+El objetivo es pasar de una playlist a evidencia segmentada por tema y, después, a tres lecturas de tono:
 
-1. **Sentimiento** — positivo / negativo / neutral
-2. **Stance** — favor / contra / neutro respecto al tema
-3. **Tono retórico** — populista / técnico / institucional (eje primario) + confrontativo / conciliador / emocional / nacionalista / victimizante (eje secundario multi-label)
+1. **Sentimiento** — positivo / negativo / neutral.
+2. **Stance** — a favor / en contra / neutral respecto a un tema.
+3. **Tono retórico** — eje primario: populista / técnico / institucional; eje secundario multi-label: confrontativo, conciliador, emocional, nacionalista, victimizante.
 
-## Arquitectura
+## Pipeline
 
-El proyecto sigue una arquitectura orientada a servicios. Cada componente es un service que implementa `ComponenteProtocol` (contrato `.procesar(input) → output`), con configuración encapsulada en su constructor.
-
-```
-1. Ingesta        →  YouTube playlist → Whisper → transcripciones con timestamps
-2. Segmentación   →  Transcripciones → spaCy + embeddings → segmentos semánticos
-3. Temas          →  BERTopic → descubrimiento automático de temas predominantes
-4. Filtrado       →  Tema seleccionado → subset de segmentos relevantes
-5. Tono           →  3 modelos zero-shot sobre los segmentos filtrados
-6. Salida         →  Agregación → JSON
+```text
+1. Ingesta       YouTube playlist -> Whisper -> transcripciones con timestamps
+2. Segmentación  transcripciones -> spaCy + embeddings -> segmentos semánticos
+3. Temas         segmentos -> BERTopic -> tópicos y asignaciones
+4. Filtrado      tópico/tema seleccionado -> subset relevante
+5. Tono          modelos zero-shot -> sentimiento, stance y tono retórico
+6. Salida        agregación + provenance -> JSON/reportes
 ```
 
-### Estructura del código
+## Estado actual
 
-```
+| Componente | Estado | Tests | Salida |
+|---|---:|---:|---|
+| 1. Ingesta | ✅ Completo | 47 | `list[VideoTranscript]` |
+| 2. Segmentación | ✅ Completo | 35 | `list[Segmento]` |
+| 3. Temas | ✅ MVP implementado | 11 | `ResultadoTemas` |
+| 4. Filtrado | Pendiente | — | segmentos relevantes |
+| 5. Tono | Pendiente | — | lecturas de tono |
+| 6. Salida | Pendiente | — | JSON/reportes |
+
+Verificación local actual: `93 passed`, `ruff check` limpio y `ty check` limpio.
+
+## Decisiones de arquitectura
+
+- **Services OOP por componente:** cada componente implementa `ComponenteProtocol` mediante `.procesar(input) -> output`.
+- **Config encapsulada:** los hiperparámetros viven en el constructor del service.
+- **Helpers puros:** la lógica interna se mantiene en funciones testeables.
+- **Lazy loading:** Whisper, spaCy, sentence-transformers y BERTopic se cargan solo cuando se usan.
+- **DTOs compartidos vs locales:** `src/tono_politico/models.py` contiene DTOs compartidos por más de un componente (`VideoTranscript`, `SegmentoRaw`, `WordTimestamp`, etc.). Los DTOs específicos viven dentro de su componente, por ejemplo `segmentacion/models.py` y `temas/models.py`.
+- **Embeddings compartidos:** Segmentación y Temas usan `LiquidAI/LFM2.5-Embedding-350M` para mantener consistencia semántica entre detección de cortes y clustering temático.
+
+## Estructura del código
+
+```text
 src/tono_politico/
-├── models.py              # DTOs compartidos (WordTimestamp, SegmentoRaw, VideoTranscript, ...)
+├── models.py              # DTOs compartidos: WordTimestamp, SegmentoRaw, VideoTranscript, VideoInfo, PlaylistInfo
 ├── protocol.py            # ComponenteProtocol
 ├── ingesta/               # Componente 1 ✅
-│   ├── service.py         # IngestaService (orquestador OOP)
-│   ├── playlist.py        # Metadata de playlists (yt-dlp)
-│   ├── audio.py           # Descarga y cache de audios .wav
-│   ├── transcripcion.py   # Whisper + persistencia JSON
-│   └── cache.py           # Convención de rutas (base_dir threaded)
+│   ├── service.py         # IngestaService
+│   ├── playlist.py        # metadata de playlists vía yt-dlp
+│   ├── audio.py           # descarga/cache de audios .wav
+│   ├── transcripcion.py   # Whisper + JSON
+│   └── cache.py           # rutas centralizadas
 ├── segmentacion/          # Componente 2 ✅
-│   ├── service.py         # SegmentacionService (orquestador OOP)
-│   ├── sentencias.py      # spaCy → oraciones con timestamps
-│   ├── breakpoints.py     # Distancia coseno + percentil 95 (estándar LangChain)
-│   ├── agrupacion.py      # Guardrails (min/max oraciones, max palabras)
-│   └── models.py          # DTOs (Oracion, Segmento)
-├── temas/                 # Componente 3 (pendiente)
+│   ├── service.py         # SegmentacionService
+│   ├── sentencias.py      # spaCy -> Oracion[]
+│   ├── breakpoints.py     # distancia coseno + percentil 95
+│   ├── agrupacion.py      # guardrails min/max
+│   └── models.py          # Oracion, Segmento
+├── temas/                 # Componente 3 ✅ MVP
+│   ├── service.py         # TemasService
+│   ├── descubrimiento.py  # BERTopic + UMAP + HDBSCAN
+│   └── models.py          # SegmentoTematizado, TopicoInfo, ResultadoTemas
 ├── filtrado/              # Componente 4 (pendiente)
 ├── tono/                  # Componente 5 (pendiente)
 └── salida/                # Componente 6 (pendiente)
@@ -47,32 +70,50 @@ src/tono_politico/
 
 ## Configuración
 
-```bash
-# Crear entorno virtual con uv
-uv venv --python 3.11
+Defaults de proyecto: [`config/config.yaml`](config/config.yaml).
 
-# Instalar dependencias (incluye el paquete en modo editable)
+Importante: el YAML documenta la configuración canónica; por ahora los services reciben esos valores por constructor. Todavía no hay loader global/CLI que lea automáticamente ese archivo.
+
+## Entorno local
+
+El proyecto usa el stack Astral: `uv`, `ruff`, `ty`.
+
+```bash
+cd ~/Documentos/Proyectos/tono-politico
+uv venv --python 3.11
 uv pip install -e ".[dev]"
+uv lock
 ```
 
-## Herramientas
+Modelo spaCy para ejecución real del Componente 2:
 
-El proyecto usa el ecosistema de [Astral](https://astral.sh):
+```bash
+uv run python -m spacy download es_core_news_lg
+```
 
-| Herramienta | Uso | Comando |
-|-------------|-----|---------|
-| **uv** | Gestión de dependencias y entorno | `uv run pytest tests/` |
-| **ruff** | Linter + formatter | `ruff check src/ tests/` |
-| **ty** | Type checker | `ty check src/` |
+## Calidad
 
-## Componente 1: Ingesta
+```bash
+# Tests
+uv run pytest tests/ -v
 
-Recibe la URL de una playlist de YouTube, descarga el audio de cada video, lo transcribe con Whisper y devuelve transcripciones estructuradas con timestamps y pausas entre segmentos.
+# Lint
+ruff check src/ tests/
 
-### Uso
+# Type check
+ty check src/
+
+# Todo antes de cerrar un cambio
+ruff check src/ tests/ && ty check src/ && uv run pytest tests/ -v
+```
+
+## Uso por componente
+
+### Componente 1: Ingesta
 
 ```python
 from pathlib import Path
+
 from tono_politico.ingesta import IngestaService
 
 svc = IngestaService(
@@ -84,67 +125,7 @@ svc = IngestaService(
 transcripciones = svc.procesar("https://youtube.com/playlist?list=...")
 ```
 
-### Cache de dos niveles
-
-```
-data/
-└── <playlist>/
-    ├── videos-<playlist>/              # audios .wav
-    │   ├── <video_id>.wav
-    │   └── ...
-    └── transcripciones-<playlist>/     # transcripciones .json
-        ├── <video_id>.json
-        └── ...
-```
-
-- **Audios:** si el `.wav` ya existe, no se descarga de nuevo.
-- **Transcripciones:** si el `.json` existe y su `video_id` coincide, no se retranscribe.
-
-### Módulos internos
-
-| Módulo | Responsabilidad |
-|--------|----------------|
-| `service.py` | `IngestaService` — orquesta todo el flujo con config encapsulada |
-| `playlist.py` | `obtener_info_playlist(url)` — metadata vía `yt-dlp --flat-playlist` |
-| `audio.py` | `verificar_cache_videos` + `descargar_audio` — descarga y cache `.wav` |
-| `transcripcion.py` | `transcribir` (Whisper) + `guardar`/`cargar`/`verificar` JSON |
-| `cache.py` | Rutas centralizadas con `base_dir` inyectable |
-
-## Componente 2: Segmentación
-
-Toma las transcripciones crudas de Whisper y las reagrupa en segmentos semánticamente coherentes — bloques de discurso que tratan un mismo tema.
-
-### Pipeline
-
-```
-VideoTranscript[] (Whisper)
-    │
-    ▼ extraer_oraciones()     — spaCy divide en Oracion[] con words asignadas
-    │
-    ▼ detectar_breakpoints()  — embeddings detectan cambios de tópico
-    │
-    ▼ agrupar_segmentos()     — guardrails → Segmento[]
-```
-
-### Detección de breakpoints semánticos
-
-Sigue el estándar de **LangChain SemanticChunker** / **LlamaIndex**:
-
-1. Codifica todas las oraciones con sentence-transformers
-2. Calcula **distancia coseno** entre oraciones consecutivas
-3. Marca breakpoint donde la distancia supera el **percentil 95**
-
-La segmentación acústica la realiza Whisper internamente — este componente se enfoca exclusivamente en la señal semántica.
-
-### Guardrails
-
-| Parámetro | Default | Función |
-|-----------|---------|---------|
-| `min_oraciones` | 2 | Fusiona segmentos demasiado pequeños con el anterior |
-| `max_oraciones` | 8 | Subdivide segmentos demasiado largos |
-| `max_palabras` | 150 | Límite de palabras por segmento |
-
-### Uso
+### Componente 2: Segmentación
 
 ```python
 from tono_politico.segmentacion import SegmentacionService
@@ -152,28 +133,43 @@ from tono_politico.segmentacion import SegmentacionService
 svc = SegmentacionService(
     spacy_model="es_core_news_lg",
     breakpoint_percentile=95,
+    min_oraciones=2,
+    max_oraciones=8,
+    max_palabras=150,
 )
 
 segmentos = svc.procesar(transcripciones)
 ```
 
-## Estado del proyecto
+### Componente 3: Temas
 
-| Componente | Estado | Tests |
-|------------|--------|-------|
-| 1. Ingesta | ✅ Completo | 47 |
-| 2. Segmentación | ✅ Completo | 35 |
-| 3. Temas | Pendiente | — |
-| 4. Filtrado | Pendiente | — |
-| 5. Tono | Pendiente | — |
-| 6. Salida | Pendiente | — |
+```python
+from tono_politico.temas import TemasService
 
-## Uso completo (próximamente)
+svc = TemasService(
+    min_topic_size=3,
+    n_neighbors=10,
+    n_components=5,
+)
 
-```bash
-# Descubrir temas predominantes
-uv run python -m tono_politico --playlist "URL" --actor "Sheinbaum" --descubrir-temas
-
-# Analizar tono sobre un tema específico
-uv run python -m tono_politico --playlist "URL" --actor "Sheinbaum" --tema "seguridad pública"
+resultado = svc.procesar(segmentos)
 ```
+
+`resultado` contiene:
+
+- `segmentos`: cada `Segmento` con `topico_id` y `probabilidad`.
+- `topicos`: metadata de tópicos (`palabras_clave`, conteo, representatividad).
+- `num_topicos`: número de tópicos sin contar outliers (`-1`).
+
+## Documentación técnica
+
+- [Componente 1: Ingesta](docs/componente-1-ingesta.md)
+- [Componente 2: Segmentación](docs/componente-2-segmentacion.md)
+- [Componente 3: Temas](docs/componente-3-temas.md)
+- [Configuración](docs/configuracion.md)
+
+## Próximos componentes
+
+4. **Filtrado** — usar tópicos/keywords/consulta del usuario para seleccionar segmentos relevantes.
+5. **Tono** — aplicar zero-shot `xlm-roberta-large-xnli` en tres lecturas.
+6. **Salida** — agregar resultados con provenance y exportar JSON/reportes.

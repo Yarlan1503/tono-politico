@@ -41,6 +41,8 @@ svc = SegmentacionService(
 segmentos: list[Segmento] = svc.procesar(transcripciones)
 ```
 
+`SegmentacionService` carga internamente `LiquidAI/LFM2.5-Embedding-350M` como modelo de embeddings para mantener el mismo espacio semántico que el Componente 3 (Temas).
+
 ### Configuración
 
 | Parámetro | Tipo | Default | Descripción |
@@ -162,8 +164,8 @@ Definidos en `src/tono_politico/segmentacion/models.py`:
 | Herramienta | Uso |
 |-------------|-----|
 | `spacy` + `es_core_news_lg` | División en oraciones con offsets de caracteres |
-| `sentence-transformers` + `all-MiniLM-L6-v2` | Embeddings para distancia semántica |
-| CPU | No requiere GPU (MiniLM es ligero) |
+| `sentence-transformers` + `LiquidAI/LFM2.5-Embedding-350M` | Embeddings para distancia semántica |
+| CPU/GPU | Puede correr en CPU; GPU acelera embeddings en corpus grandes |
 
 ## Decisiones de diseño
 
@@ -185,3 +187,7 @@ En vez de heurísticas de puntuación, usamos los offsets de caracteres que spaC
 ### Guardrails como capas independientes
 
 Los 3 guardrails (`min_oraciones`, `max_oraciones`, `max_palabras`) se aplican en pipeline secuencial, no simultáneamente. Esto permite razonar sobre cada uno de forma aislada y testearlos independientemente.
+
+### Embeddings compartidos con Temas
+
+Segmentación y Temas usan `LiquidAI/LFM2.5-Embedding-350M`. La intención es que los cortes semánticos (Componente 2) y el clustering temático (Componente 3) operen en el mismo espacio semántico, evitando inconsistencias entre “dónde cortar” y “cómo agrupar”.
