@@ -42,11 +42,12 @@ temas:
     calculate_probabilities: true
     verbose: false
 
-# Componente 4: Filtrado — pendiente.
+# Componente 4: Filtrado — ResultadoTemas -> ResultadoFiltrado
 filtrado:
-  estado: "pendiente"
+  estado: "mvp_implementado"
   usar_topicos: true
   min_relevancia: 0.35
+  incluir_outliers: false
 
 # Componente 5: Tono — pendiente.
 tono:

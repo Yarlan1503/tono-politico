@@ -27,7 +27,7 @@ Estado actual: **no hay loader global/CLI** que lea automáticamente este YAML. 
 | `ingesta` | `IngestaService` | ✅ | `data_dir`, `whisper_model`, `idioma`. |
 | `segmentacion` | `SegmentacionService` | ✅ | spaCy, percentil de breakpoints y guardrails. |
 | `temas` | `TemasService` + `descubrir_temas()` | ✅ MVP | BERTopic, UMAP, HDBSCAN y modelo de embeddings. |
-| `filtrado` | pendiente | — | Placeholder para Componente 4. |
+| `filtrado` | `FiltradoService` + `filtrar_por_topico()` | ✅ MVP | `topico_id` elegido por ejecución, `min_relevancia`, política de outliers. |
 | `tono` | pendiente | — | Labels y modelo zero-shot planeado. |
 | `salida` | pendiente | — | Formato de exportación/provenance planeado. |
 
@@ -118,6 +118,32 @@ Notas:
 - `umap`, `hdbscan` y `bertopic` reflejan defaults internos de `descubrir_temas()`.
 - Si `len(segmentos) < min_topic_size`, no se inventan clusters: todos los segmentos quedan como outlier `-1`.
 
+## Componente 4: `filtrado`
+
+```yaml
+filtrado:
+  estado: "mvp_implementado"
+  usar_topicos: true
+  min_relevancia: 0.35
+  incluir_outliers: false
+```
+
+Equivale a:
+
+```python
+FiltradoService(
+    topico_id=<id_elegido>,
+    min_relevancia=0.35,
+    incluir_outliers=False,
+)
+```
+
+Notas:
+
+- `topico_id` no tiene default global porque se elige después de inspeccionar `ResultadoTemas.topicos`.
+- `min_relevancia` filtra por la probabilidad de asignación del segmento al tópico.
+- `incluir_outliers=False` evita analizar accidentalmente el tópico `-1`, que BERTopic usa para ruido/outliers.
+
 ## Componentes pendientes
 
-`filtrado`, `tono` y `salida` son placeholders de diseño. Sus valores deben tratarse como intención documentada, no como API implementada, hasta que existan services y tests.
+`tono` y `salida` son placeholders de diseño. Sus valores deben tratarse como intención documentada, no como API implementada, hasta que existan services y tests.

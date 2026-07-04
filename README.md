@@ -26,11 +26,11 @@ El objetivo es pasar de una playlist a evidencia segmentada por tema y, después
 | 1. Ingesta | ✅ Completo | 47 | `list[VideoTranscript]` |
 | 2. Segmentación | ✅ Completo | 35 | `list[Segmento]` |
 | 3. Temas | ✅ MVP implementado | 11 | `ResultadoTemas` |
-| 4. Filtrado | Pendiente | — | segmentos relevantes |
+| 4. Filtrado | ✅ MVP implementado | 5 | `ResultadoFiltrado` |
 | 5. Tono | Pendiente | — | lecturas de tono |
 | 6. Salida | Pendiente | — | JSON/reportes |
 
-Verificación local actual: `93 passed`, `ruff check` limpio y `ty check` limpio.
+Verificación local actual: `98 passed`, `ruff check` limpio y `ty check` limpio.
 
 ## Decisiones de arquitectura
 
@@ -63,7 +63,10 @@ src/tono_politico/
 │   ├── service.py         # TemasService
 │   ├── descubrimiento.py  # BERTopic + UMAP + HDBSCAN
 │   └── models.py          # SegmentoTematizado, TopicoInfo, ResultadoTemas
-├── filtrado/              # Componente 4 (pendiente)
+├── filtrado/              # Componente 4 ✅ MVP
+│   ├── service.py         # FiltradoService
+│   ├── filtro.py          # filtrado determinista por tópico/relevancia
+│   └── models.py          # CriterioFiltrado, SegmentoFiltrado, ResultadoFiltrado
 ├── tono/                  # Componente 5 (pendiente)
 └── salida/                # Componente 6 (pendiente)
 ```
@@ -161,15 +164,36 @@ resultado = svc.procesar(segmentos)
 - `topicos`: metadata de tópicos (`palabras_clave`, conteo, representatividad).
 - `num_topicos`: número de tópicos sin contar outliers (`-1`).
 
+### Componente 4: Filtrado
+
+```python
+from tono_politico.filtrado import FiltradoService
+
+svc = FiltradoService(
+    topico_id=0,
+    min_relevancia=0.35,
+    incluir_outliers=False,
+)
+
+resultado_filtrado = svc.procesar(resultado)
+```
+
+`resultado_filtrado` contiene:
+
+- `criterio`: tópico elegido, umbral y política de outliers.
+- `topico`: metadata del tópico elegido si existe.
+- `segmentos`: subset de `SegmentoFiltrado` para pasar a análisis de tono.
+- `total_segmentos_entrada` / `total_segmentos_filtrados`: conteos de provenance.
+
 ## Documentación técnica
 
 - [Componente 1: Ingesta](docs/componente-1-ingesta.md)
 - [Componente 2: Segmentación](docs/componente-2-segmentacion.md)
 - [Componente 3: Temas](docs/componente-3-temas.md)
+- [Componente 4: Filtrado](docs/componente-4-filtrado.md)
 - [Configuración](docs/configuracion.md)
 
 ## Próximos componentes
 
-4. **Filtrado** — usar tópicos/keywords/consulta del usuario para seleccionar segmentos relevantes.
 5. **Tono** — aplicar zero-shot `xlm-roberta-large-xnli` en tres lecturas.
 6. **Salida** — agregar resultados con provenance y exportar JSON/reportes.
