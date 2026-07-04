@@ -53,15 +53,19 @@ filtrado:
 tono:
   estado: "pendiente"
   modelo_base: "joeddav/xlm-roberta-large-xnli"
-  sentimiento_labels: ["positivo", "negativo", "neutral"]
-  stance_labels: ["a favor", "en contra", "neutral"]
-  tono_primario_labels: ["populista", "técnico", "institucional"]
-  tono_secundario_labels:
-    - "confrontativo"
-    - "conciliador"
-    - "emocional"
-    - "nacionalista"
-    - "victimizante"
+  sentimiento_labels:
+    ["esperanza", "angustia", "indignación", "orgullo", "empatía"]
+  stance_labels: ["apoyo", "rehazo"]
+  ideologia_labels:
+    [
+      "populista",
+      "tecnocrata",
+      "estatista",
+      "corporativista",
+      "nacionalista",
+      "globalista",
+    ]
+  estilo_discursivo_labels: []
 
 # Componente 6: Salida — pendiente.
 salida:
