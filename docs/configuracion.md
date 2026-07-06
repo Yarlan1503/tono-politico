@@ -6,13 +6,12 @@
 
 `config/config.yaml` documenta los defaults acordados para cada componente del pipeline. Es la referencia que debe mantenerse sincronizada con los constructores de los services y con la documentación.
 
-Estado actual: **no hay loader global/CLI** que lea automáticamente este YAML. Los services se configuran por constructor. Si más adelante se agrega CLI o pipeline end-to-end, este archivo será la fuente natural de defaults.
+Estado actual: **ya existe `main.py`** que lee automáticamente `config/config.yaml` (hay loader/CLI). Los services siguen pudiendo configurarse por constructor, pero el pipeline end-to-end se alimenta de este archivo de defaults.
 
 ## Convención general
 
-- Cada componente tiene su propia sección (`ingesta`, `segmentacion`, `temas`, etc.).
+- Cada componente tiene su propia sección (`ingesta`, `diarizacion`, `segmentacion`, etc.).
 - Los valores implementados deben coincidir con los defaults reales del service correspondiente.
-- Las secciones de componentes pendientes pueden existir, pero deben marcarse con `estado: "pendiente"`.
 - Cuando cambie un default en código, actualizar también:
   - `config/config.yaml`
   - `README.md`
@@ -25,18 +24,19 @@ Estado actual: **no hay loader global/CLI** que lea automáticamente este YAML. 
 |---|---|---:|---|
 | `project` | defaults globales | referencia | `data_dir`, `idioma`, `random_state`. |
 | `ingesta` | `IngestaService` | ✅ | `data_dir`, `whisper_model`, `idioma`. |
+| `diarizacion` | `DiarizacionService` | ✅ | pyannote community-1, perfil de voz temporal, política de ambigüedad y salida actor-only. |
 | `segmentacion` | `SegmentacionService` | ✅ | spaCy, percentil de breakpoints y guardrails. |
 | `temas` | `TemasService` + `descubrir_temas()` | ✅ MVP | BERTopic, UMAP, HDBSCAN y modelo de embeddings. |
 | `filtrado` | `FiltradoService` + `filtrar_por_topico()` | ✅ MVP | `topico_id` elegido por ejecución, `min_relevancia`, política de outliers. |
-| `tono` | pendiente | — | Labels y modelo zero-shot planeado. |
-| `salida` | pendiente | — | Formato de exportación/provenance planeado. |
+| `tono` | `TonoService` | ✅ | Arquitectura híbrida: embeddings para dimensiones multi-label + LLM para stance. |
+| `salida` | `SalidaService` | ✅ | Exportación JSON + Markdown con provenance. |
 
 ## Componente 1: `ingesta`
 
 ```yaml
 ingesta:
   data_dir: "data"
-  whisper_model: "large-v3"
+  whisper_model: "large-v3-turbo"
   idioma: "es"
 ```
 
@@ -45,12 +45,57 @@ Equivale a:
 ```python
 IngestaService(
     data_dir=Path("data"),
-    whisper_model="large-v3",
+    whisper_model="large-v3-turbo",
     idioma="es",
 )
 ```
 
 No incluir `whisper_device` mientras `transcribir()` no lo acepte explícitamente. Hoy Whisper se ejecuta con `fp16=False`, amigable con CPU.
+
+## Componente 1.5: `diarizacion`
+
+```yaml
+diarizacion:
+  estado: "implementado"
+  pipeline: "pyannote/speaker-diarization-community-1"
+  speaker_embedding_model: "pyannote/embedding"
+  actor_objetivo: "Lilly Téllez"
+  umbral_match: 0.5
+  umbral_ambiguo: 0.7
+  referencia_voz:
+    origen: "misma_playlist"
+    max_audios: 1
+    video_id: "su9nURIj9XQ"
+    url: "https://www.youtube.com/watch?v=su9nURIj9XQ&list=PLE9Zk7g9R__M&index=8"
+    cache: "solo_ejecucion"
+  match_ambiguo: "descartar_como_otro_speaker"
+  salida: "solo_texto_actor"
+```
+
+Equivale a:
+
+```python
+DiarizacionService(
+    actor="Lilly Téllez",
+    video_ref_id="su9nURIj9XQ",
+    data_dir=Path("data"),
+    pipeline_name="pyannote/speaker-diarization-community-1",
+    embedding_model="pyannote/embedding",
+    umbral_match=0.5,
+    umbral_ambiguo=0.7,
+)
+```
+
+Notas:
+
+- **Implementado:** 62 tests en verde cubren models, perfil de voz, diarización, alineación, matching y service.
+- La playlist de pruebas actual es `Play-PoliTest` (`PLE9Zk7g9R__M`) y contiene solo intervenciones de Lilly Téllez.
+- Para el perfil de voz se toma **un solo audio de referencia** de la misma playlist: `su9nURIj9XQ`.
+- El perfil de voz se cachea únicamente durante la ejecución del pipeline; no se persiste como artefacto estable.
+- Si el match de speaker contra el perfil es ambiguo, ese speaker se trata como no-actor y el pipeline continúa.
+- La salida hacia Segmentación debe contener únicamente texto atribuido al actor objetivo.
+- **Thresholds calibrados con research:** `umbral_match=0.5` y `umbral_ambiguo=0.7` basados en el clustering threshold de pyannote 3.1 (0.7046), distribuciones de VoxCeleb (pyannote/embedding 2.8% EER), y SpeechBrain ECAPA-TDNN (0.25).
+- **Smoke test pendiente:** calibrar thresholds con datos reales de la playlist Play-PoliTest antes de producción.
 
 ## Componente 2: `segmentacion`
 
@@ -122,8 +167,6 @@ Notas:
 
 ```yaml
 filtrado:
-  estado: "mvp_implementado"
-  usar_topicos: true
   min_relevancia: 0.35
   incluir_outliers: false
 ```
@@ -144,6 +187,72 @@ Notas:
 - `min_relevancia` filtra por la probabilidad de asignación del segmento al tópico.
 - `incluir_outliers=False` evita analizar accidentalmente el tópico `-1`, que BERTopic usa para ruido/outliers.
 
-## Componentes pendientes
+## Componente 5: `tono`
 
-`tono` y `salida` son placeholders de diseño. Sus valores deben tratarse como intención documentada, no como API implementada, hasta que existan services y tests.
+```yaml
+tono:
+  embedding_model: "LiquidAI/LFM2.5-Embedding-350M"
+  llm_model: "LiquidAI/LFM2.5-1.2B-Instruct"
+  device: "cpu"
+
+  # Stance (vía LLM con actor + tema + few-shot balanceado)
+  stance_labels: ["apoyo", "rechazo"]
+
+  # Intensidad antagónica (vía embeddings, 5 prototipos escalonados 1-5)
+  intensidad_niveles: 5
+
+  # Lógica política (vía embeddings, multi-label)
+  logica_politica_labels:
+    ["nacionalista", "globalista", "populista", "tecnocrata", "corporativista", "estatista"]
+
+  # Sentimiento (vía embeddings, multi-label)
+  sentimiento_labels:
+    ["esperanza", "angustia", "indignacion", "orgullo", "empatia"]
+
+  # Estilo discursivo (vía embeddings, multi-label)
+  estilo_discursivo_labels:
+    ["directo", "academico", "confrontativo", "conciliador", "catastrofista", "testimonial"]
+
+  # Función discursiva (vía embeddings, multi-label)
+  funcion_discursiva_labels:
+    ["critica", "propuesta", "narrativa_personal"]
+```
+
+Equivale a:
+
+```python
+TonoService(
+    actor="Lilly Téllez",  # de config diarizacion.actor_objetivo o CLI --tema
+    tema="fracking",       # del CLI --tema
+)
+```
+
+Notas:
+
+- Arquitectura híbrida: embeddings para dimensiones multi-label + LLM para stance.
+- Mean pooling manual (no `sentence-transformers`) para evitar embeddings degenerados con LFM2.5.
+- `actor` y `tema` se pasan al constructor, no desde config: dependen de la ejecución.
+- Tests marcados `@pytest.mark.slow` cargan modelos reales (LFM2.5-Embedding + LFM2.5-1.2B-Instruct).
+
+## Componente 6: `salida`
+
+```yaml
+salida:
+  formatos: ["json", "markdown"]
+  incluir_provenance: true
+  redondear_scores: 4
+```
+
+Equivale a:
+
+```python
+SalidaService(
+    output_path="output/",  # directorio → genera informe.json + informe.md
+)
+```
+
+Notas:
+
+- Provenance obligatorio: todo informe declara modelos usados y advertencia de confianza.
+- `output_path` flexible: archivo `.json`, archivo `.md`, directorio (ambos), o `None` (solo memoria).
+- `redondear_scores` controla la precisión decimal en la serialización.

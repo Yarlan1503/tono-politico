@@ -30,7 +30,7 @@ class TestIngestaService:
         """Los defaults del constructor son correctos."""
         svc = IngestaService()
         assert svc.data_dir.name == "data"
-        assert svc.whisper_model == "large-v3"
+        assert svc.whisper_model == "large-v3-turbo"
         assert svc.idioma == "es"
 
     def test_todo_desde_cache(self, playlist_mock, tmp_path):

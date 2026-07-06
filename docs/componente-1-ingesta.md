@@ -24,7 +24,7 @@ URL Playlist
         ├─ Cache hit → usar .wav existente
         └─ Cache miss → descargar_audio()  — yt-dlp -x
         │
-        ▼ transcribir()            — Whisper large-v3
+        ▼ transcribir()            — Whisper large-v3-turbo
         │
         ▼ guardar_transcripcion()  — persistir a JSON
         │
@@ -43,7 +43,7 @@ from tono_politico.ingesta import IngestaService
 
 svc = IngestaService(
     data_dir=Path("data"),     # raíz del cache local
-    whisper_model="large-v3",  # modelo de Whisper
+    whisper_model="large-v3-turbo",  # modelo de Whisper
     idioma="es",               # idioma forzado para transcripción
 )
 
@@ -57,7 +57,7 @@ transcripciones: list[VideoTranscript] = svc.procesar(
 | Parámetro | Tipo | Default | Descripción |
 |-----------|------|---------|-------------|
 | `data_dir` | `Path` | `Path("data")` | Directorio raíz para cache de audios y transcripciones |
-| `whisper_model` | `str` | `"large-v3"` | Modelo de Whisper a cargar |
+| `whisper_model` | `str` | `"large-v3-turbo"` | Modelo de Whisper a cargar |
 | `idioma` | `str` | `"es"` | Código de idioma para forzar la transcripción |
 
 ## Módulos internos

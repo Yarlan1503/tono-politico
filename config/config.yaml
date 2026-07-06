@@ -12,8 +12,25 @@ project:
 # Componente 1: Ingesta — YouTube playlist → Whisper → VideoTranscript[]
 ingesta:
   data_dir: "data"
-  whisper_model: "large-v3"
+  whisper_model: "large-v3-turbo"
   idioma: "es"
+
+# Componente 1.5: Diarización / actor — audio + transcript → texto del actor objetivo
+diarizacion:
+  estado: "implementado"
+  pipeline: "pyannote/speaker-diarization-community-1"
+  speaker_embedding_model: "pyannote/embedding"
+  actor_objetivo: "Lilly Téllez"
+  umbral_match: 0.5
+  umbral_ambiguo: 0.7
+  referencia_voz:
+    origen: "misma_playlist"
+    max_audios: 1
+    video_id: "su9nURIj9XQ"
+    url: "https://www.youtube.com/watch?v=su9nURIj9XQ&list=PLE9Zk7g9R__M&index=8"
+    cache: "solo_ejecucion"
+  match_ambiguo: "descartar_como_otro_speaker"
+  salida: "solo_texto_actor"
 
 # Componente 2: Segmentación — VideoTranscript[] → Segmento[]
 segmentacion:

@@ -31,14 +31,14 @@ class IngestaService:
 
     Attributes:
         data_dir: Directorio raíz para cache de audios y transcripciones.
-        whisper_model: Modelo de Whisper a usar (default: large-v3).
+        whisper_model: Modelo de Whisper a usar (default: large-v3-turbo).
         idioma: Idioma para Whisper (default: es).
     """
 
     def __init__(
         self,
         data_dir: Path = Path("data"),
-        whisper_model: str = "large-v3",
+        whisper_model: str = "large-v3-turbo",
         idioma: str = "es",
     ) -> None:
         self.data_dir = data_dir

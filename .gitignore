@@ -55,3 +55,9 @@ Thumbs.db
 
 # Agent docs (local only)
 AGENTS.md
+
+# Logs y outputs
+*.log
+output/
+data/
+.uv-cache/

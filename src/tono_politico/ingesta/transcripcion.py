@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 # ──────────────────────────────────────────────────────────
 
 def transcribir(
-    audio_path: str | Path, modelo: str = "large-v3", idioma: str = "es"
+    audio_path: str | Path, modelo: str = "large-v3-turbo", idioma: str = "es"
 ) -> list[SegmentoRaw]:
     """Transcribe un archivo de audio con OpenAI Whisper oficial.
 
@@ -33,7 +33,7 @@ def transcribir(
 
     Args:
         audio_path: Ruta al archivo de audio local.
-        modelo: Nombre del modelo Whisper a cargar (por defecto large-v3).
+        modelo: Nombre del modelo Whisper a cargar (por defecto large-v3-turbo).
         idioma: Código de idioma para forzar la transcripción (por defecto es).
 
     Returns:

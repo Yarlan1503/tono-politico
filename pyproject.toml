@@ -13,6 +13,7 @@ dependencies = [
     "bertopic>=0.16.0",
     "spacy>=3.7.0",
     "numpy>=1.24.0",
+    "pyyaml>=6.0",
 ]
 
 [project.optional-dependencies]
@@ -22,7 +23,7 @@ dev = [
 ]
 
 [project.scripts]
-tono-politico = "tono_politico.__main__:main"
+tono-politico = "main:main"
 
 [build-system]
 requires = ["hatchling"]
