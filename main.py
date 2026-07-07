@@ -25,10 +25,15 @@ from __future__ import annotations
 
 import argparse
 import logging
+import shutil
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
+
+from tono_politico.ingesta.playlist import obtener_info_playlist
+from tono_politico.temas.models import ResultadoTemas
 
 # ──────────────────────────────────────────────────────────
 # Config loader
@@ -70,8 +75,7 @@ def _build_diarizacion(cfg: dict):
         actor=c.get("actor_objetivo", "Lilly Téllez"),
         video_ref_id=ref.get("video_id", "su9nURIj9XQ"),
         data_dir=Path(cfg.get("project", {}).get("data_dir", "data")),
-        pipeline_name=c.get("pipeline", "pyannote/speaker-diarization-community-1"),
-        embedding_model=c.get("speaker_embedding_model", "pyannote/embedding"),
+        pipeline_name=c.get("pipeline", "pyannote-community/speaker-diarization-community-1"),
         umbral_match=c.get("umbral_match", 0.5),
         umbral_ambiguo=c.get("umbral_ambiguo", 0.7),
     )
@@ -134,14 +138,22 @@ def _build_salida(cfg: dict, output_path: str | None):
 
 
 # ──────────────────────────────────────────────────────────
-# Fases del pipeline
+# Pipeline compartido (FASE 1)
 # ──────────────────────────────────────────────────────────
 
 
-def fase_1(cfg: dict, playlist_url: str) -> None:
+@dataclass
+class Fase1Resultado:
+    """Output de la Fase 1, reutilizable por la Fase 2."""
+    resultado_temas: ResultadoTemas
+    nombre_playlist: str
+
+
+def _ejecutar_fase_1(cfg: dict, playlist_url: str) -> Fase1Resultado:
     """Ingesta → Diarización → Segmentación → Temas.
 
-    Imprime los tópicos descubiertos para que el usuario elija con --topico.
+    Ejecuta los 4 primeros componentes y devuelve el resultado de Temas.
+    Ambas fases (informativa y completa) reutilizan esta función.
     """
     logging.info("═══ FASE 1: Ingesta → Diarización → Segmentación → Temas ═══")
 
@@ -150,9 +162,6 @@ def fase_1(cfg: dict, playlist_url: str) -> None:
     svc_ingesta = _build_ingesta(cfg)
     transcripts = svc_ingesta.procesar(playlist_url)
     logging.info(f"  {len(transcripts)} transcripciones")
-
-    # Necesitamos el nombre de la playlist para diarización
-    from tono_politico.ingesta.playlist import obtener_info_playlist
 
     info = obtener_info_playlist(playlist_url)
     nombre_playlist = info.nombre
@@ -175,11 +184,18 @@ def fase_1(cfg: dict, playlist_url: str) -> None:
     svc_temas = _build_temas(cfg)
     resultado_temas = svc_temas.procesar(segmentos)
 
-    # Imprimir tópicos
+    return Fase1Resultado(
+        resultado_temas=resultado_temas,
+        nombre_playlist=nombre_playlist,
+    )
+
+
+def _imprimir_topicos(resultado: ResultadoTemas) -> None:
+    """Imprime los tópicos descubiertos en consola."""
     print("\n" + "=" * 60)
-    print(f"Tópicos descubiertos: {resultado_temas.num_topicos}")
+    print(f"Tópicos descubiertos: {resultado.num_topicos}")
     print("=" * 60)
-    for topico in resultado_temas.topicos:
+    for topico in resultado.topicos:
         palabras = ", ".join(topico.palabras_clave[:8])
         print(
             f"  [{topico.id}] {topico.nombre} "
@@ -195,6 +211,42 @@ def fase_1(cfg: dict, playlist_url: str) -> None:
     )
 
 
+def _limpiar_cache(cfg: dict, nombre_playlist: str) -> None:
+    """Limpia el cache de audios y transcripciones al finalizar.
+
+    Los datos de runtime (audios .wav, transcripciones JSON) son perecederos:
+    los videos pueden cambiar entre corridas y dejar caches stale.
+    Los modelos (HF hub, Whisper) se mantienen — son persistentes.
+    """
+    data_dir = Path(cfg.get("project", {}).get("data_dir", "data"))
+    playlist_dir = data_dir / nombre_playlist
+
+    if playlist_dir.exists():
+        if cfg.get("_keep_cache"):
+            logging.info(f"Cache conservado (--keep-cache): {playlist_dir}")
+            return
+        logging.info(f"Limpiando cache runtime: {playlist_dir}")
+        shutil.rmtree(playlist_dir)
+        logging.info("Cache limpiado")
+    else:
+        logging.debug(f"Cache no encontrado: {playlist_dir}")
+
+
+# ──────────────────────────────────────────────────────────
+# Fases del CLI
+# ──────────────────────────────────────────────────────────
+
+
+def fase_1(cfg: dict, playlist_url: str) -> None:
+    """Ingesta → Diarización → Segmentación → Temas. Imprime tópicos."""
+    try:
+        resultado = _ejecutar_fase_1(cfg, playlist_url)
+        _imprimir_topicos(resultado.resultado_temas)
+    finally:
+        info = obtener_info_playlist(playlist_url)
+        _limpiar_cache(cfg, info.nombre)
+
+
 def fase_2(
     cfg: dict,
     playlist_url: str,
@@ -202,61 +254,56 @@ def fase_2(
     tema: str,
     output_path: str | None,
 ) -> None:
-    """Ingesta → Diarización → Segmentación → Temas → Filtrado → Tono → Salida."""
-    logging.info("═══ PIPELINE COMPLETO (Fases 1 + 2) ═══")
+    """Pipeline completo: Fase 1 + Filtrado → Tono → Salida."""
+    try:
+        logging.info("═══ PIPELINE COMPLETO (Fases 1 + 2) ═══")
 
-    # Repetir fase 1
-    logging.info("─ Componente 1: Ingesta ─")
-    svc_ingesta = _build_ingesta(cfg)
-    transcripts = svc_ingesta.procesar(playlist_url)
+        # Fase 1
+        f1 = _ejecutar_fase_1(cfg, playlist_url)
 
-    from tono_politico.ingesta.playlist import obtener_info_playlist
-
-    info = obtener_info_playlist(playlist_url)
-    nombre_playlist = info.nombre
-
-    logging.info("─ Componente 1.5: Diarización ─")
-    svc_diarizacion = _build_diarizacion(cfg)
-    transcripts_actor = svc_diarizacion.procesar(transcripts, nombre_playlist)
-
-    logging.info("─ Componente 2: Segmentación ─")
-    svc_segmentacion = _build_segmentacion(cfg)
-    segmentos = svc_segmentacion.procesar(transcripts_actor)
-
-    logging.info("─ Componente 3: Temas ─")
-    svc_temas = _build_temas(cfg)
-    resultado_temas = svc_temas.procesar(segmentos)
-
-    # 4. Filtrado
-    logging.info(f"─ Componente 4: Filtrado (tópico {topico_id}) ─")
-    svc_filtrado = _build_filtrado(cfg, topico_id)
-    resultado_filtrado = svc_filtrado.procesar(resultado_temas)
-    logging.info(
-        f"  {resultado_filtrado.total_segmentos_filtrados}/"
-        f"{resultado_filtrado.total_segmentos_entrada} segmentos filtrados"
-    )
-
-    if resultado_filtrado.total_segmentos_filtrados == 0:
-        logging.error(
-            f"No hay segmentos para el tópico {topico_id}. "
-            f"Verifica el ID con la fase 1."
+        # 4. Filtrado
+        logging.info(f"─ Componente 4: Filtrado (tópico {topico_id}) ─")
+        svc_filtrado = _build_filtrado(cfg, topico_id)
+        resultado_filtrado = svc_filtrado.procesar(f1.resultado_temas)
+        logging.info(
+            f"  {resultado_filtrado.total_segmentos_filtrados}/"
+            f"{resultado_filtrado.total_segmentos_entrada} segmentos filtrados"
         )
-        sys.exit(1)
 
-    # 5. Tono
-    actor = cfg.get("diarizacion", {}).get("actor_objetivo", "Lilly Téllez")
-    logging.info(f"─ Componente 5: Tono (actor='{actor}', tema='{tema}') ─")
-    svc_tono = _build_tono(cfg, actor, tema)
-    resultado_tono = svc_tono.procesar(resultado_filtrado)
-    logging.info(f"  {len(resultado_tono.segmentos)} segmentos analizados")
+        if resultado_filtrado.total_segmentos_filtrados == 0:
+            logging.error(
+                f"No hay segmentos para el tópico {topico_id}. "
+                f"Verifica el ID con la fase 1."
+            )
+            sys.exit(1)
 
-    # 6. Salida
-    logging.info("─ Componente 6: Salida ─")
-    svc_salida = _build_salida(cfg, output_path)
-    informe = svc_salida.procesar(resultado_tono)
-    logging.info(f"  Informe generado: {informe.perfil.actor} / {informe.perfil.tema}")
+        # 5. Tono
+        actor = cfg.get("diarizacion", {}).get("actor_objetivo", "Lilly Téllez")
+        logging.info(f"─ Componente 5: Tono (actor='{actor}', tema='{tema}') ─")
+        svc_tono = _build_tono(cfg, actor, tema)
+        resultado_tono = svc_tono.procesar(resultado_filtrado)
+        logging.info(f"  {len(resultado_tono.segmentos)} segmentos analizados")
 
-    print(f"\n✅ Pipeline completo. Informe: {svc_salida.output_path or '(sin disco)'}")
+        # 6. Salida
+        logging.info("─ Componente 6: Salida ─")
+        svc_salida = _build_salida(cfg, output_path)
+        informe = svc_salida.procesar(resultado_tono)
+        logging.info(
+            f"  Informe generado: {informe.perfil.actor} / {informe.perfil.tema}"
+        )
+
+        print(
+            f"\n✅ Pipeline completo. Informe: "
+            f"{svc_salida.output_path or '(sin disco)'}"
+        )
+    finally:
+        _limpiar_cache(cfg, _get_playlist_name(playlist_url))
+
+
+def _get_playlist_name(playlist_url: str) -> str:
+    """Obtiene el nombre sanitizado de la playlist."""
+    info = obtener_info_playlist(playlist_url)
+    return info.nombre
 
 
 # ──────────────────────────────────────────────────────────
@@ -300,6 +347,11 @@ def main() -> None:
         help=f"Ruta del config YAML (default: {CONFIG_PATH})",
     )
     parser.add_argument(
+        "--keep-cache",
+        action="store_true",
+        help="No limpiar el cache de audios/transcripciones al finalizar.",
+    )
+    parser.add_argument(
         "--verbose",
         action="store_true",
         help="Logging DEBUG en vez de INFO",
@@ -317,6 +369,10 @@ def main() -> None:
 
     # Cargar config
     cfg = cargar_config(Path(args.config))
+
+    # Si --keep-cache, parchamos _limpiar_cache para que no haga nada
+    if args.keep_cache:
+        cfg["_keep_cache"] = True
 
     # Validar argumentos
     if args.topico is not None and not args.tema:

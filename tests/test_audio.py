@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from tono_politico.ingesta.audio import descargar_audio, verificar_cache_videos
 
 # ──────────────────────────────────────────────────────────
@@ -133,8 +131,8 @@ class TestDescargarAudio:
         assert ruta.name == f"{video.id}.wav"
         assert "videos-TestPlaylist" in str(ruta)
 
-    def test_lanza_error_si_yt_dlp_falla(self, playlist_mock, tmp_path):
-        """Si yt-dlp falla, debe lanzar RuntimeError."""
+    def test_devuelve_none_si_yt_dlp_falla(self, playlist_mock, tmp_path):
+        """Si yt-dlp falla, devuelve None (graceful degradation)."""
         video = playlist_mock.videos[0]
         mock_result = MagicMock()
         mock_result.returncode = 1
@@ -144,11 +142,12 @@ class TestDescargarAudio:
             "tono_politico.ingesta.audio.subprocess.run",
             return_value=mock_result,
         ):
-            with pytest.raises(RuntimeError, match="Error descargando video"):
-                descargar_audio(video, playlist_mock.nombre, base_dir=tmp_path)
+            resultado = descargar_audio(video, playlist_mock.nombre, base_dir=tmp_path)
 
-    def test_lanza_error_si_archivo_no_creado(self, playlist_mock, tmp_path):
-        """Si yt-dlp termina OK pero el archivo no existe, lanza RuntimeError."""
+        assert resultado is None
+
+    def test_devuelve_none_si_archivo_no_creado(self, playlist_mock, tmp_path):
+        """Si yt-dlp termina OK pero el archivo no existe, devuelve None."""
         video = playlist_mock.videos[0]
         mock_result = MagicMock()
         mock_result.returncode = 0
@@ -158,5 +157,6 @@ class TestDescargarAudio:
             "tono_politico.ingesta.audio.subprocess.run",
             return_value=mock_result,
         ):
-            with pytest.raises(RuntimeError, match="el archivo no existe"):
-                descargar_audio(video, playlist_mock.nombre, base_dir=tmp_path)
+            resultado = descargar_audio(video, playlist_mock.nombre, base_dir=tmp_path)
+
+        assert resultado is None

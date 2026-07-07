@@ -115,12 +115,20 @@ class IngestaService:
                 nombre_playlist, video.id, self.data_dir
             )
         for video in audios_faltantes:
-            rutas_audio[video.id] = descargar_audio(
+            ruta = descargar_audio(
                 video, nombre_playlist, self.data_dir
             )
+            if ruta is not None:
+                rutas_audio[video.id] = ruta
+            else:
+                logger.warning(
+                    f"Video {video.id} sin audio, se omitirá en transcripción"
+                )
 
-        # Transcribir y guardar
+        # Transcribir y guardar (solo videos con audio exitoso)
         for video in faltantes:
+            if video.id not in rutas_audio:
+                continue
             segmentos = transcribir(
                 rutas_audio[video.id],
                 modelo=self.whisper_model,

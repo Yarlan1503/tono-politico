@@ -56,11 +56,14 @@ def descargar_audio(
     video: VideoInfo,
     nombre_playlist: str,
     base_dir: Path | None = None,
-) -> Path:
+) -> Path | None:
     """Descarga solo el audio de un video de YouTube como WAV.
 
     Usa yt-dlp para extraer el audio en formato WAV (compatible con Whisper).
     El archivo se guarda como {video_id}.wav en el directorio de cache.
+
+    Si la descarga falla (HTTP 403, video privado, etc.), registra el error
+    y devuelve None en vez de crashear — el pipeline salta el video y continúa.
 
     Args:
         video: VideoInfo del video a descargar.
@@ -68,10 +71,7 @@ def descargar_audio(
         base_dir: Directorio raíz de datos (default: DATA_DIR).
 
     Returns:
-        Path al archivo de audio descargado.
-
-    Raises:
-        RuntimeError: Si yt-dlp falla al descargar.
+        Path al archivo de audio descargado, o None si falló.
     """
     dir_videos = ruta_dir_videos(nombre_playlist, base_dir)
     dir_videos.mkdir(parents=True, exist_ok=True)
@@ -86,24 +86,32 @@ def descargar_audio(
         "-f", "bestaudio/best",
         "-o", str(destino),
         "--no-warnings",
+        "--retries", "10",
         url,
     ]
 
     logger.info(f"Descargando audio: [{video.id}] {video.titulo[:60]}")
 
-    resultado = subprocess.run(
-        cmd, capture_output=True, text=True, timeout=600
-    )
+    try:
+        resultado = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=600
+        )
+    except subprocess.TimeoutExpired:
+        logger.error(f"Timeout descargando video {video.id}, saltando")
+        return None
 
     if resultado.returncode != 0:
-        raise RuntimeError(
-            f"Error descargando video {video.id}: {resultado.stderr.strip()}"
+        logger.error(
+            f"Error descargando video {video.id}: "
+            f"{resultado.stderr.strip()[:200]}, saltando"
         )
+        return None
 
     if not destino.exists():
-        raise RuntimeError(
-            f"Descarga completada pero el archivo no existe: {destino}"
+        logger.error(
+            f"Descarga de {video.id} completada pero el archivo no existe, saltando"
         )
+        return None
 
     tamanio_mb = destino.stat().st_size / (1024 * 1024)
     logger.info(f"Audio descargado: {destino.name} ({tamanio_mb:.1f} MB)")

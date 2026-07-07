@@ -13,6 +13,7 @@ dependencies = [
     "bertopic>=0.16.0",
     "spacy>=3.7.0",
     "numpy>=1.24.0",
+    "pyannote.audio>=4.0.0",
     "pyyaml>=6.0",
 ]
 

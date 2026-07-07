@@ -18,8 +18,7 @@ ingesta:
 # Componente 1.5: Diarización / actor — audio + transcript → texto del actor objetivo
 diarizacion:
   estado: "implementado"
-  pipeline: "pyannote/speaker-diarization-community-1"
-  speaker_embedding_model: "pyannote/embedding"
+  pipeline: "pyannote-community/speaker-diarization-community-1"
   actor_objetivo: "Lilly Téllez"
   umbral_match: 0.5
   umbral_ambiguo: 0.7
