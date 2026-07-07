@@ -170,9 +170,14 @@ class TestManejoErroresClasificarStance:
                 return "chat"
 
             def __call__(self, *a, **kw):
-                class R:
-                    input_ids = [0]
-                return R()
+                import torch
+
+                class T:
+                    def to(self, device):
+                        return self
+
+                ids = torch.tensor([[0, 1, 2]])
+                return {"input_ids": ids, "attention_mask": torch.ones_like(ids)}
 
             def decode(self, *a, **kw):
                 return ""
@@ -201,9 +206,14 @@ class TestManejoErroresClasificarStance:
                 return "chat"
 
             def __call__(self, *a, **kw):
-                class R:
-                    input_ids = [0]
-                return R()
+                import torch
+
+                class T:
+                    def to(self, device):
+                        return self
+
+                ids = torch.tensor([[0, 1, 2]])
+                return {"input_ids": ids, "attention_mask": torch.ones_like(ids)}
 
             def decode(self, *a, **kw):
                 return "no hay json aqui, solo palabras"
@@ -229,9 +239,14 @@ class TestManejoErroresClasificarStance:
                 return "chat"
 
             def __call__(self, *a, **kw):
-                class R:
-                    input_ids = [0]
-                return R()
+                import torch
+
+                class T:
+                    def to(self, device):
+                        return self
+
+                ids = torch.tensor([[0, 1, 2]])
+                return {"input_ids": ids, "attention_mask": torch.ones_like(ids)}
 
         clf._model = _FakeModel()
         clf._tokenizer = _FakeTok()
@@ -239,3 +254,80 @@ class TestManejoErroresClasificarStance:
         resultado = clf.clasificar_stance("texto", "Actor", "tema")
         assert resultado.stance == "apoyo"
         assert resultado.confianza == 0.0
+
+
+# ============================================================
+# GENERACIÓN DETERMINISTA — do_sample=False por defecto
+# ============================================================
+class TestGeneracionDeterminista:
+    """Verifica que generate() usa do_sample=False por defecto."""
+
+    def test_generate_usa_do_sample_false_por_defecto(self, monkeypatch):
+        gen_kwargs_captured: dict = {}
+
+        class _FakeModel:
+            def generate(self, input_ids, **kwargs):
+                gen_kwargs_captured.update(kwargs)
+                # Devolver algo decodificable
+                return input_ids
+
+            def eval(self):
+                pass
+
+        class _FakeTok:
+            def apply_chat_template(self, *a, **kw):
+                return "chat"
+
+            def __call__(self, *a, **kw):
+                import torch
+
+                ids = torch.tensor([[0, 1, 2]])
+                return {"input_ids": ids, "attention_mask": torch.ones_like(ids)}
+
+            def decode(self, token_ids, **kw):
+                return '{"stance": "apoyo", "confianza": 0.9}'
+
+        clf = ClasificadorLLM()
+        clf._model = _FakeModel()
+        clf._tokenizer = _FakeTok()
+        monkeypatch.setattr(clf, "_load", lambda: None)
+
+        clf.clasificar_stance("texto", "Actor", "tema")
+
+        assert "do_sample" in gen_kwargs_captured
+        assert gen_kwargs_captured["do_sample"] is False
+
+    def test_generate_mueve_input_a_device(self, monkeypatch):
+        """Los input_ids deben ir al device configurado."""
+        captured_args: list = []
+
+        class _FakeModel:
+            def generate(self, input_ids, **kwargs):
+                captured_args.append(input_ids)
+                return input_ids
+
+            def eval(self):
+                pass
+
+        class _FakeTok:
+            def apply_chat_template(self, *a, **kw):
+                return "chat"
+
+            def __call__(self, *a, **kw):
+                import torch
+
+                ids = torch.tensor([[0, 1, 2]])
+                return {"input_ids": ids, "attention_mask": torch.ones_like(ids)}
+
+            def decode(self, token_ids, **kw):
+                return '{"stance": "rechazo", "confianza": 0.8}'
+
+        clf = ClasificadorLLM(device="cpu")
+        clf._model = _FakeModel()
+        clf._tokenizer = _FakeTok()
+        monkeypatch.setattr(clf, "_load", lambda: None)
+
+        clf.clasificar_stance("texto", "Actor", "tema")
+
+        # Debe haber llamado generate exitosamente
+        assert len(captured_args) == 1

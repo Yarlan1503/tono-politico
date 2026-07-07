@@ -59,11 +59,7 @@ def construir_prompt_stance(
     Returns:
         Lista de mensajes [{"role": "system", ...}, {"role": "user", ...}].
     """
-    user_content = (
-        f"ACTOR: {actor}\n"
-        f"TEMA A EVALUAR: {tema}\n\n"
-        f'"{texto}"'
-    )
+    user_content = f'ACTOR: {actor}\nTEMA A EVALUAR: {tema}\n\n"{texto}"'
     return [
         {"role": "system", "content": _SYSTEM_PROMPT},
         {"role": "user", "content": user_content},
@@ -87,23 +83,17 @@ def parsear_stance(raw: str) -> ResultadoStance:
     start = raw.find("{")
     end = raw.rfind("}") + 1
     if start < 0 or end <= start:
-        raise ValueError(
-            f"No se pudo parsear JSON de la respuesta: {raw[:200]}"
-        )
+        raise ValueError(f"No se pudo parsear JSON de la respuesta: {raw[:200]}")
 
     json_str = raw[start:end]
     try:
         data = json.loads(json_str)
     except json.JSONDecodeError as e:
-        raise ValueError(
-            f"No se pudo parsear JSON de la respuesta: {e}"
-        ) from e
+        raise ValueError(f"No se pudo parsear JSON de la respuesta: {e}") from e
 
     stance = data.get("stance", "")
     if stance not in ("apoyo", "rechazo"):
-        raise ValueError(
-            f"stance inválido: '{stance}'. Debe ser 'apoyo' o 'rechazo'."
-        )
+        raise ValueError(f"stance inválido: '{stance}'. Debe ser 'apoyo' o 'rechazo'.")
 
     confianza = float(data.get("confianza", 0.5))
     confianza = max(0.0, min(1.0, confianza))
@@ -146,6 +136,7 @@ class ClasificadorLLM:
             dtype=torch.bfloat16,
         )
         self._model.eval()
+        self._model.to(self.device)  # ty: ignore[invalid-argument-type]
 
     def clasificar_stance(
         self,
@@ -155,18 +146,9 @@ class ClasificadorLLM:
     ) -> ResultadoStance:
         """Clasifica el stance del texto sobre el tema indicado.
 
-        Si el modelo falla (JSON garbage, timeout, OOM, etc.), registra
-        un warning y devuelve un ResultadoStance con confianza 0.0
-        para no interrumpir el procesamiento del batch.
-
-        Args:
-            texto: Texto del segmento.
-            actor: Nombre del actor político.
-            tema: Tema a evaluar.
-
-        Returns:
-            ResultadoStance con stance (apoyo/rechazo) y confianza.
-            En caso de error: apoyo con confianza 0.0.
+        Usa generación determinista (do_sample=False) por defecto para
+        clasificación reproducible. Si el modelo falla, registra un
+        warning y devuelve confianza 0.0.
         """
         self._load()
         assert self._model is not None
@@ -180,21 +162,20 @@ class ClasificadorLLM:
             add_generation_prompt=True,
             tokenize=False,
         )
-        input_ids = self._tokenizer(chat, return_tensors="pt").input_ids
+        inputs = self._tokenizer(chat, return_tensors="pt")
+        inputs = {k: v.to(self.device) for k, v in inputs.items()}
+        input_ids = inputs["input_ids"]
 
         try:
             with torch.no_grad():
                 output = self._model.generate(  # ty: ignore[invalid-argument-type]
                     input_ids,
                     max_new_tokens=100,
-                    temperature=0.1,
-                    top_k=50,
-                    repetition_penalty=1.05,
-                    do_sample=True,
+                    do_sample=False,
                 )
 
             decoded = self._tokenizer.decode(
-                output[0][input_ids.shape[-1]:],
+                output[0][input_ids.shape[-1] :],
                 skip_special_tokens=True,
             )
             if isinstance(decoded, list):
