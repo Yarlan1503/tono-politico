@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from tono_politico.config import Config
-from tono_politico.pipeline.models import RunManifest, RunResult
+from tono_politico.pipeline.models import PhaseRunStatus, RunManifest, RunResult
 
 
 def _load_cli_module():
@@ -61,6 +61,33 @@ class FakeRunner:
             ),
             exit_code=0,
             informe_path=Path(output_path) if output_path else None,
+        )
+
+
+class FakeFailingRunner(FakeRunner):
+    def analyze(
+        self,
+        playlist_url: str,
+        topico_id: int,
+        tema: str,
+        output_path: str | None,
+    ) -> RunResult:
+        self.analyze_calls.append((playlist_url, topico_id, tema, output_path))
+        return RunResult(
+            manifest=RunManifest(
+                run_id="run-001",
+                playlist_url=playlist_url,
+                playlist_name="Play-PoliTest",
+                status="failed",
+                phases=[
+                    PhaseRunStatus(
+                        phase="filtrado",
+                        ok=False,
+                        message="No hay segmentos para el tópico 0",
+                    )
+                ],
+            ),
+            exit_code=1,
         )
 
 
@@ -117,3 +144,33 @@ def test_main_analyze_retorna_exit_code_del_runner(monkeypatch, tmp_path: Path):
     assert isinstance(runner.cfg, Config)
     assert runner.discover_calls == []
     assert runner.analyze_calls == [("playlist-url", 0, "seguridad", "output/test")]
+
+
+def test_main_analyze_imprime_mensaje_de_fallo(
+    monkeypatch,
+    tmp_path: Path,
+    capsys,
+):
+    cli = _load_cli_module()
+    FakeRunner.instances = []
+    monkeypatch.setattr(cli, "PipelineRunner", FakeFailingRunner, raising=False)
+
+    exit_code = cli.main(
+        [
+            "--playlist",
+            "playlist-url",
+            "--topico",
+            "0",
+            "--tema",
+            "seguridad",
+            "--config",
+            str(_config(tmp_path)),
+        ]
+    )
+
+    captured = capsys.readouterr()
+
+    assert exit_code == 1
+    assert "Pipeline falló" in captured.out
+    assert "filtrado" in captured.out
+    assert "No hay segmentos para el tópico 0" in captured.out

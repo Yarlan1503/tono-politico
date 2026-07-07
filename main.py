@@ -144,6 +144,17 @@ def _imprimir_resumen_salida(informe_path: Path | None) -> None:
     print(f"\n✅ Pipeline completo. Informe: {informe_path or '(sin disco)'}")
 
 
+def _imprimir_resumen_fallo(result) -> None:
+    fase_fallida = next(
+        (phase for phase in reversed(result.manifest.phases) if not phase.ok),
+        None,
+    )
+    if fase_fallida is None:
+        print("\n❌ Pipeline falló sin fase registrada.")
+        return
+    print(f"\n❌ Pipeline falló en fase {fase_fallida.phase}: {fase_fallida.message}")
+
+
 # ──────────────────────────────────────────────────────────
 # CLI
 # ──────────────────────────────────────────────────────────
@@ -220,9 +231,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = runner.analyze(args.playlist, args.topico, tema, args.output)
         if result.exit_code == 0:
             _imprimir_resumen_salida(result.informe_path)
+        else:
+            _imprimir_resumen_fallo(result)
         return result.exit_code
 
     result = runner.discover(args.playlist)
+    if result.exit_code != 0:
+        _imprimir_resumen_fallo(result)
+        return result.exit_code
     resultado_temas = getattr(runner, "last_resultado_temas", None)
     if resultado_temas is not None:
         _imprimir_topicos(resultado_temas)

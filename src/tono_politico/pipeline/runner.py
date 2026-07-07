@@ -53,12 +53,23 @@ class PipelineRunner:
     factories: ServiceFactories
     keep_cache: bool = False
     last_resultado_temas: ResultadoTemas | None = field(default=None, init=False)
+    _active_manifest: RunManifest | None = field(default=None, init=False, repr=False)
 
     def discover(self, playlist_url: str) -> RunResult:
         """Ejecuta Fase 1: Ingesta → Diarización → Segmentación → Temas."""
-        fase_1 = self._ejecutar_fase_1(playlist_url)
-        self._limpiar_cache(fase_1.manifest.playlist_name)
-        return RunResult(manifest=fase_1.manifest, exit_code=0)
+        self._active_manifest = None
+        manifest: RunManifest | None = None
+        try:
+            fase_1 = self._ejecutar_fase_1(playlist_url)
+            manifest = fase_1.manifest
+            return RunResult(manifest=manifest, exit_code=0)
+        except Exception:
+            manifest = self._active_manifest or _failure_manifest(playlist_url)
+            manifest.status = "failed"
+            return RunResult(manifest=manifest, exit_code=1)
+        finally:
+            if manifest is not None:
+                self._limpiar_cache(manifest.playlist_name)
 
     def analyze(
         self,
@@ -68,45 +79,53 @@ class PipelineRunner:
         output_path: str | None,
     ) -> RunResult:
         """Ejecuta Fase 1 + Filtrado → Tono → Salida."""
-        fase_1 = self._ejecutar_fase_1(playlist_url)
-        manifest = fase_1.manifest
+        self._active_manifest = None
+        manifest: RunManifest | None = None
+        try:
+            fase_1 = self._ejecutar_fase_1(playlist_url)
+            manifest = fase_1.manifest
 
-        svc_filtrado = self.factories.build_filtrado(self.cfg, topico_id)
-        resultado_filtrado = self._run_phase(
-            manifest,
-            "filtrado",
-            lambda: svc_filtrado.procesar(fase_1.resultado_temas),
-        )
-
-        if resultado_filtrado.total_segmentos_filtrados == 0:
-            manifest.status = "failed"
-            manifest.phases[-1] = PhaseRunStatus(
-                phase="filtrado",
-                ok=False,
-                elapsed_seconds=manifest.phases[-1].elapsed_seconds,
-                message=f"No hay segmentos para el tópico {topico_id}",
+            svc_filtrado = self.factories.build_filtrado(self.cfg, topico_id)
+            resultado_filtrado = self._run_phase(
+                manifest,
+                "filtrado",
+                lambda: svc_filtrado.procesar(fase_1.resultado_temas),
             )
-            self._limpiar_cache(manifest.playlist_name)
+
+            if resultado_filtrado.total_segmentos_filtrados == 0:
+                manifest.status = "failed"
+                manifest.phases[-1] = PhaseRunStatus(
+                    phase="filtrado",
+                    ok=False,
+                    elapsed_seconds=manifest.phases[-1].elapsed_seconds,
+                    message=f"No hay segmentos para el tópico {topico_id}",
+                )
+                return RunResult(manifest=manifest, exit_code=1)
+
+            actor = self.cfg.diarizacion.actor_objetivo
+            svc_tono = self.factories.build_tono(self.cfg, actor, tema)
+            resultado_tono = self._run_phase(
+                manifest,
+                "tono",
+                lambda: svc_tono.procesar(resultado_filtrado),
+            )
+
+            svc_salida = self.factories.build_salida(self.cfg, output_path)
+            self._run_phase(manifest, "salida", lambda: svc_salida.procesar(resultado_tono))
+
+            informe_path = getattr(svc_salida, "output_path", None)
+            return RunResult(
+                manifest=manifest,
+                exit_code=0,
+                informe_path=Path(informe_path) if informe_path is not None else None,
+            )
+        except Exception:
+            manifest = self._active_manifest or _failure_manifest(playlist_url)
+            manifest.status = "failed"
             return RunResult(manifest=manifest, exit_code=1)
-
-        actor = self.cfg.diarizacion.actor_objetivo
-        svc_tono = self.factories.build_tono(self.cfg, actor, tema)
-        resultado_tono = self._run_phase(
-            manifest,
-            "tono",
-            lambda: svc_tono.procesar(resultado_filtrado),
-        )
-
-        svc_salida = self.factories.build_salida(self.cfg, output_path)
-        self._run_phase(manifest, "salida", lambda: svc_salida.procesar(resultado_tono))
-
-        self._limpiar_cache(manifest.playlist_name)
-        informe_path = getattr(svc_salida, "output_path", None)
-        return RunResult(
-            manifest=manifest,
-            exit_code=0,
-            informe_path=Path(informe_path) if informe_path is not None else None,
-        )
+        finally:
+            if manifest is not None:
+                self._limpiar_cache(manifest.playlist_name)
 
     def _ejecutar_fase_1(self, playlist_url: str) -> Fase1Resultado:
         info = self.factories.get_playlist_info(playlist_url)
@@ -146,13 +165,15 @@ class PipelineRunner:
         return Fase1Resultado(resultado_temas=resultado_temas, manifest=manifest)
 
     def _crear_manifest(self, playlist_url: str, info: PlaylistInfo) -> RunManifest:
-        return RunManifest(
+        manifest = RunManifest(
             run_id=_run_id(),
             playlist_url=playlist_url,
             playlist_name=info.nombre,
             status="ok",
             cache_dir=self._cache_dir(info.nombre),
         )
+        self._active_manifest = manifest
+        return manifest
 
     def _run_phase(
         self,
@@ -161,7 +182,19 @@ class PipelineRunner:
         fn: Callable[[], Any],
     ) -> Any:
         started = time.perf_counter()
-        result = fn()
+        try:
+            result = fn()
+        except Exception as exc:
+            manifest.status = "failed"
+            manifest.phases.append(
+                PhaseRunStatus(
+                    phase=phase,
+                    ok=False,
+                    elapsed_seconds=time.perf_counter() - started,
+                    message=f"{type(exc).__name__}: {exc}",
+                )
+            )
+            raise
         manifest.phases.append(
             PhaseRunStatus(
                 phase=phase,
@@ -188,6 +221,15 @@ class PipelineRunner:
 
 def _run_id() -> str:
     return time.strftime("%Y%m%d-%H%M%S")
+
+
+def _failure_manifest(playlist_url: str) -> RunManifest:
+    return RunManifest(
+        run_id=_run_id(),
+        playlist_url=playlist_url,
+        playlist_name="",
+        status="failed",
+    )
 
 
 def _video_statuses(

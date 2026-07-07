@@ -24,6 +24,16 @@ class FakeService:
         return self.output
 
 
+class FailingService:
+    def __init__(self, message: str):
+        self.message = message
+        self.calls: list[tuple[Any, ...]] = []
+
+    def procesar(self, *args: Any) -> Any:
+        self.calls.append(args)
+        raise RuntimeError(self.message)
+
+
 class FakeSalidaService(FakeService):
     def __init__(self, output: Any, output_path: Path | None = Path("output")):
         super().__init__(output)
@@ -87,12 +97,12 @@ def _informe() -> InformeTono:
 def _factories(
     *,
     playlist_name: str = "Play-PoliTest",
-    ingesta: FakeService | None = None,
-    diarizacion: FakeService | None = None,
-    segmentacion: FakeService | None = None,
-    temas: FakeService | None = None,
-    filtrado: FakeService | None = None,
-    tono: FakeService | None = None,
+    ingesta: Any | None = None,
+    diarizacion: Any | None = None,
+    segmentacion: Any | None = None,
+    temas: Any | None = None,
+    filtrado: Any | None = None,
+    tono: Any | None = None,
     salida: FakeSalidaService | None = None,
 ) -> ServiceFactories:
     transcript = _transcript()
@@ -180,6 +190,28 @@ class TestPipelineRunnerDiscover:
         assert result.manifest.cache_dir == cache_dir
         assert cache_dir.exists()
 
+    def test_discover_si_una_fase_falla_registra_manifest_y_limpia_cache(
+        self,
+        tmp_path: Path,
+    ):
+        cache_dir = tmp_path / "Play-PoliTest"
+        cache_dir.mkdir()
+        segmentacion = FailingService("segmentación rota")
+        runner = PipelineRunner(
+            cfg=_cfg(tmp_path),
+            factories=_factories(segmentacion=segmentacion),
+            keep_cache=False,
+        )
+
+        result = runner.discover("playlist-url")
+
+        assert result.exit_code == 1
+        assert result.manifest.status == "failed"
+        assert result.manifest.phases[-1].phase == "segmentacion"
+        assert result.manifest.phases[-1].ok is False
+        assert "segmentación rota" in result.manifest.phases[-1].message
+        assert not cache_dir.exists()
+
 
 class TestPipelineRunnerAnalyze:
     def test_analyze_ejecuta_fase_2_y_devuelve_informe_path(self, tmp_path: Path):
@@ -235,3 +267,27 @@ class TestPipelineRunnerAnalyze:
         assert "No hay segmentos" in result.manifest.phases[-1].message
         assert tono.calls == []
         assert salida.calls == []
+
+    def test_analyze_si_una_fase_falla_registra_manifest_y_limpia_cache(
+        self,
+        tmp_path: Path,
+    ):
+        cache_dir = tmp_path / "Play-PoliTest"
+        cache_dir.mkdir()
+        tono = FailingService("tono roto")
+        salida = FakeSalidaService(_informe())
+        runner = PipelineRunner(
+            cfg=_cfg(tmp_path),
+            factories=_factories(tono=tono, salida=salida),
+            keep_cache=False,
+        )
+
+        result = runner.analyze("playlist-url", topico_id=0, tema="seguridad", output_path=None)
+
+        assert result.exit_code == 1
+        assert result.manifest.status == "failed"
+        assert result.manifest.phases[-1].phase == "tono"
+        assert result.manifest.phases[-1].ok is False
+        assert "tono roto" in result.manifest.phases[-1].message
+        assert salida.calls == []
+        assert not cache_dir.exists()
