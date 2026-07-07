@@ -26,7 +26,9 @@ Herramienta NLP para analizar el tono de actores políticos mexicanos a partir d
 | 5. Tono | ✅ Completo | 61 | `ResultadoTono` |
 | 6. Salida | ✅ Completo | 35 | `InformeTono` |
 
-Verificación local: `328 passed` (`-m "not slow"`, 5 slow deselected), `ruff check` limpio y `ty check` limpio.
+Verificación local: `337 passed` (`-m "not slow"`, 5 slow deselected), `ruff check` limpio y `ty check` limpio.
+
+Gate canónico: `bash scripts/check.sh` (ruff + ty + pytest). Con modelos lentos: `RUN_SLOW=1 bash scripts/check.sh`.
 
 ## Uso del pipeline completo
 

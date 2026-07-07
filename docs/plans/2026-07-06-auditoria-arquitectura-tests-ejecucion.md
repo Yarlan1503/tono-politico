@@ -692,7 +692,7 @@ class DownloadResult:
 
 ---
 
-### P3 — CLI, CI local y smoke real
+### P3 — CLI, CI local y smoke real ✅ COMPLETADO
 
 #### Task 16: Añadir tests de CLI sin modelos pesados
 
