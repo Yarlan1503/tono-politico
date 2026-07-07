@@ -57,7 +57,9 @@ svc = DiarizacionService(
     actor="Lilly Téllez",
     video_ref_id="su9nURIj9XQ",
     data_dir=Path("data"),
-    pipeline_name="pyannote-community/speaker-diarization-community-1",
+    pipeline_name="pyannote/speaker-diarization-community-1",
+    fallback_pipeline="pyannote-community/speaker-diarization-community-1",
+    device="auto",
     umbral_match=0.5,
     umbral_ambiguo=0.7,
 )
@@ -72,13 +74,15 @@ filtrados: list[VideoTranscript] = svc.procesar(transcripts, nombre_playlist="Pl
 | `actor` | `str` | `"Lilly Téllez"` | Nombre del actor político objetivo |
 | `video_ref_id` | `str` | `"su9nURIj9XQ"` | ID del video de referencia de voz |
 | `data_dir` | `Path` | `Path("data")` | Directorio raíz de datos (mismo que IngestaService) |
-| `pipeline_name` | `str` | `"pyannote-community/speaker-diarization-community-1"` | Pipeline de diarización vigente, validado localmente |
+| `pipeline_name` | `str` | `"pyannote/speaker-diarization-community-1"` | Pipeline primary oficial |
+| `fallback_pipeline` | `str \| None` | `"pyannote-community/speaker-diarization-community-1"` | Fallback local validado si el primary falla |
+| `device` | `str` | `"auto"` | `auto` usa CUDA si está disponible; si no, CPU |
 | `umbral_match` | `float` | `0.5` | Distancia coseno por debajo de la cual se acepta |
 | `umbral_ambiguo` | `float` | `0.7` | Distancia coseno por encima de la cual se rechaza |
 
 ### Lazy loading
 
-pyannote `Pipeline`, `Audio` helper y el perfil de voz se cargan perezosamente en el primer `.procesar()`, no al importar el módulo. Community-1 entrega `output.speaker_embeddings`, por lo que no se carga un modelo separado de embeddings. Esto permite:
+pyannote `Pipeline`, `Audio` helper y el perfil de voz se cargan perezosamente en el primer `.procesar()`, no al importar el módulo. El adapter intenta primero `pyannote/speaker-diarization-community-1`, cae a `pyannote-community/speaker-diarization-community-1` si el primary falla, aplica `device=auto` y usa `ProgressHook` cuando está disponible. Community-1 entrega `output.speaker_embeddings`, por lo que no se carga un modelo separado de embeddings. Esto permite:
 
 - Tests rápidos sin modelos pesados (mockeando el pipeline y el extractor)
 - Import del paquete sin dependencias pesadas instaladas
@@ -258,7 +262,8 @@ El contrato de salida es `list[VideoTranscript]` —mismo tipo que la entrada—
 
 | Herramienta | Uso |
 |-------------|-----|
-| `pyannote.audio` + `pyannote-community/speaker-diarization-community-1` | Diarización + `speaker_embeddings` por speaker |
+| `pyannote.audio` + `pyannote/speaker-diarization-community-1` | Primary oficial de diarización + `speaker_embeddings` por speaker |
+| `pyannote-community/speaker-diarization-community-1` | Fallback local validado si el primary no está disponible |
 | `pyannote.core` + `Audio` | Helper para recortar waveforms por turno y medir duración |
 | GPU recomendada | pyannote es lento en CPU; GPU acelera diarización |
 

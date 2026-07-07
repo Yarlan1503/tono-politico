@@ -53,7 +53,9 @@ uv run python main.py \
 
 El pipeline no asume que todo el audio pertenece al actor. Un componente de diarización identifica quién habla cuándo usando Community-1 de pyannote, compara cada speaker contra un perfil de voz del actor objetivo, y filtra las transcripciones para conservar solo las intervenciones del actor.
 
-- **Modelo de diarización vigente:** `pyannote-community/speaker-diarization-community-1` (validado localmente; el namespace oficial `pyannote/speaker-diarization-community-1` requiere token/condiciones HF y queda como primary+fallback planificado en P1).
+- **Modelo de diarización vigente:** primary oficial `pyannote/speaker-diarization-community-1`; fallback local validado `pyannote-community/speaker-diarization-community-1` si el primary falla por acceso/gating/model-not-found.
+- **Device:** `auto` mueve pyannote a CUDA cuando está disponible; si no, usa CPU.
+- **Progreso:** las llamadas largas usan `ProgressHook` cuando la versión instalada de pyannote lo expone.
 - **Embeddings de voz:** `output.speaker_embeddings` del propio pipeline Community-1; no se carga un modelo separado de embeddings.
 - **Criterio de matching:** distancia coseno contra perfil de voz, thresholds 0.5 (aceptar) / 0.7 (rechazar).
 - **Criterio de alineación:** midpoint temporal del segmento dentro del turno del actor.
@@ -90,7 +92,7 @@ prototipos textuales en español. El LLM razona stance con actor + tema + few-sh
 - **Helpers puros:** la lógica interna se mantiene en funciones testeables.
 - **Lazy loading:** Whisper, spaCy, BERTopic, pyannote y modelos LFM2.5 se cargan solo cuando se usan.
 - **ASR default:** `large-v3-turbo` por balance calidad/velocidad; mantiene `word_timestamps=True` para alinear con speaker turns.
-- **Diarización implementada:** `pyannote-community/speaker-diarization-community-1`; los embeddings por speaker salen de `output.speaker_embeddings` del pipeline. El actor se identifica con un perfil de voz cacheado solo durante la ejecución. Si el match es ambiguo, se descarta como otro speaker y el pipeline continúa.
+- **Diarización implementada:** primary `pyannote/speaker-diarization-community-1`, fallback `pyannote-community/speaker-diarization-community-1`, `device=auto` y `ProgressHook` si está disponible; los embeddings por speaker salen de `output.speaker_embeddings` del pipeline. El actor se identifica con un perfil de voz cacheado solo durante la ejecución. Si el match es ambiguo, se descarta como otro speaker y el pipeline continúa.
 - **DTOs compartidos vs locales:** `src/tono_politico/models.py` contiene DTOs compartidos por más de un componente. Los DTOs específicos viven dentro de su componente.
 - **Embeddings compartidos:** Segmentación, Temas y Tono usan `LiquidAI/LFM2.5-Embedding-350M`.
 - **Mean pooling manual en Tono:** `sentence-transformers` produce embeddings degenerados con LFM2.5; el Componente 5 usa `AutoModel` directo con mean pooling.

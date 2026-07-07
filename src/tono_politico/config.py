@@ -9,7 +9,8 @@ from typing import Any
 
 import yaml
 
-DEFAULT_PIPELINE = "pyannote-community/speaker-diarization-community-1"
+DEFAULT_PIPELINE = "pyannote/speaker-diarization-community-1"
+DEFAULT_FALLBACK_PIPELINE = "pyannote-community/speaker-diarization-community-1"
 
 
 @dataclass(frozen=True)
@@ -31,8 +32,10 @@ class DiarizacionConfig:
     actor_objetivo: str = "Lilly Téllez"
     video_ref_id: str = "su9nURIj9XQ"
     pipeline: str = DEFAULT_PIPELINE
+    fallback_pipeline: str | None = DEFAULT_FALLBACK_PIPELINE
     umbral_match: float = 0.5
     umbral_ambiguo: float = 0.7
+    device: str = "auto"
 
 
 @dataclass(frozen=True)
@@ -105,8 +108,12 @@ class Config:
                 actor_objetivo=str(diarizacion_data.get("actor_objetivo", "Lilly Téllez")),
                 video_ref_id=str(referencia_voz.get("video_id", "su9nURIj9XQ")),
                 pipeline=str(diarizacion_data.get("pipeline", DEFAULT_PIPELINE)),
+                fallback_pipeline=_optional_str(
+                    diarizacion_data.get("fallback_pipeline", DEFAULT_FALLBACK_PIPELINE)
+                ),
                 umbral_match=float(diarizacion_data.get("umbral_match", 0.5)),
                 umbral_ambiguo=float(diarizacion_data.get("umbral_ambiguo", 0.7)),
+                device=str(diarizacion_data.get("device", "auto")),
             ),
             segmentacion=SegmentacionConfig(
                 spacy_model=str(segmentacion_data.get("spacy_model", "es_core_news_lg")),
@@ -153,9 +160,11 @@ class Config:
             },
             "diarizacion": {
                 "pipeline": self.diarizacion.pipeline,
+                "fallback_pipeline": self.diarizacion.fallback_pipeline,
                 "actor_objetivo": self.diarizacion.actor_objetivo,
                 "umbral_match": self.diarizacion.umbral_match,
                 "umbral_ambiguo": self.diarizacion.umbral_ambiguo,
+                "device": self.diarizacion.device,
                 "referencia_voz": {"video_id": self.diarizacion.video_ref_id},
             },
             "segmentacion": {
@@ -206,6 +215,12 @@ def _section(data: Mapping[str, Any], key: str) -> Mapping[str, Any]:
 
 def _path(value: Any) -> Path:
     return value if isinstance(value, Path) else Path(str(value))
+
+
+def _optional_str(value: Any) -> str | None:
+    if value is None:
+        return None
+    return str(value)
 
 
 def _validar_data_dir_ingesta(ingesta_data: Mapping[str, Any], project_data_dir: Path) -> None:

@@ -18,6 +18,7 @@ from typing import Any
 
 from ..ingesta.cache import ruta_audio
 from ..models import VideoTranscript
+from .adapter import load_pyannote_pipeline, run_pyannote_pipeline
 from .alineacion import filtrar_por_actor
 from .matching import identificar_actor
 from .models import TurnoOrador
@@ -41,7 +42,9 @@ class DiarizacionService:
         actor: str = "Lilly Téllez",
         video_ref_id: str = "su9nURIj9XQ",
         data_dir: Path = Path("data"),
-        pipeline_name: str = "pyannote-community/speaker-diarization-community-1",
+        pipeline_name: str = "pyannote/speaker-diarization-community-1",
+        fallback_pipeline: str | None = "pyannote-community/speaker-diarization-community-1",
+        device: str = "auto",
         umbral_match: float = 0.5,
         umbral_ambiguo: float = 0.7,
     ) -> None:
@@ -49,6 +52,8 @@ class DiarizacionService:
         self.video_ref_id = video_ref_id
         self.data_dir = data_dir
         self.pipeline_name = pipeline_name
+        self.fallback_pipeline = fallback_pipeline
+        self.device = device
         self.umbral_match = umbral_match
         self.umbral_ambiguo = umbral_ambiguo
 
@@ -90,7 +95,7 @@ class DiarizacionService:
             audio_path = self._audio_path(transcript.video_id, nombre_playlist)
 
             # 2a. Diarizar + extraer embeddings (una sola llamada al pipeline)
-            output = pipeline(str(audio_path))
+            output = run_pyannote_pipeline(pipeline, str(audio_path))
 
             turnos = _extraer_turnos(output, transcript.video_id)
             if not turnos:
@@ -154,15 +159,17 @@ class DiarizacionService:
         por lo que no se carga un modelo separado de embeddings de voz.
         """
         if self._pipeline is None:
-            from pyannote.audio import Pipeline  # type: ignore[import-not-found]
-
             token = _leer_token_hf()
 
             logger.info(f"Cargando pipeline: {self.pipeline_name}")
-            self._pipeline = Pipeline.from_pretrained(
-                self.pipeline_name,
+            loaded = load_pyannote_pipeline(
+                primary_pipeline=self.pipeline_name,
+                fallback_pipeline=self.fallback_pipeline,
                 token=token,
+                device=self.device,
             )
+            self._pipeline = loaded.pipeline
+            self.pipeline_name = loaded.pipeline_name
         return self._pipeline
 
     def _get_audio_helper(self) -> Any:

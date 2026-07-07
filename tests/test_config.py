@@ -23,7 +23,9 @@ def test_load_config_minimo_aplica_defaults(tmp_path: Path):
     assert cfg.ingesta.idioma == "es"
     assert cfg.diarizacion.actor_objetivo == "Lilly Téllez"
     assert cfg.diarizacion.video_ref_id == "su9nURIj9XQ"
-    assert cfg.diarizacion.pipeline == "pyannote-community/speaker-diarization-community-1"
+    assert cfg.diarizacion.pipeline == "pyannote/speaker-diarization-community-1"
+    assert cfg.diarizacion.fallback_pipeline == "pyannote-community/speaker-diarization-community-1"
+    assert cfg.diarizacion.device == "auto"
     assert cfg.diarizacion.umbral_match == 0.5
     assert cfg.diarizacion.umbral_ambiguo == 0.7
 
@@ -64,6 +66,10 @@ def test_config_legacy_dict_no_contiene_tokens_ni_secretos(tmp_path: Path):
 
     assert legacy["project"]["data_dir"] == "data"
     assert legacy["ingesta"]["data_dir"] == "data"
+    assert legacy["diarizacion"]["fallback_pipeline"] == (
+        "pyannote-community/speaker-diarization-community-1"
+    )
+    assert legacy["diarizacion"]["device"] == "auto"
     assert legacy["diarizacion"]["actor_objetivo"] == "Lilly Téllez"
     assert "token" not in rendered
     assert "secret" not in rendered

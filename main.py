@@ -56,6 +56,8 @@ def _build_diarizacion(cfg: Config) -> DiarizacionService:
         video_ref_id=cfg.diarizacion.video_ref_id,
         data_dir=cfg.project.data_dir,
         pipeline_name=cfg.diarizacion.pipeline,
+        fallback_pipeline=cfg.diarizacion.fallback_pipeline,
+        device=cfg.diarizacion.device,
         umbral_match=cfg.diarizacion.umbral_match,
         umbral_ambiguo=cfg.diarizacion.umbral_ambiguo,
     )

@@ -60,7 +60,9 @@ No incluir `whisper_device` mientras `transcribir()` no lo acepte explícitament
 ```yaml
 diarizacion:
   estado: "implementado"
-  pipeline: "pyannote-community/speaker-diarization-community-1"
+  pipeline: "pyannote/speaker-diarization-community-1"
+  fallback_pipeline: "pyannote-community/speaker-diarization-community-1"
+  device: "auto"
   actor_objetivo: "Lilly Téllez"
   umbral_match: 0.5
   umbral_ambiguo: 0.7
@@ -81,7 +83,9 @@ DiarizacionService(
     actor="Lilly Téllez",
     video_ref_id="su9nURIj9XQ",
     data_dir=Path("data"),
-    pipeline_name="pyannote-community/speaker-diarization-community-1",
+    pipeline_name="pyannote/speaker-diarization-community-1",
+    fallback_pipeline="pyannote-community/speaker-diarization-community-1",
+    device="auto",
     umbral_match=0.5,
     umbral_ambiguo=0.7,
 )
@@ -90,7 +94,8 @@ DiarizacionService(
 Notas:
 
 - **Implementado:** 62 tests en verde cubren models, perfil de voz, diarización, alineación, matching y service.
-- El pipeline vigente validado localmente es `pyannote-community/speaker-diarization-community-1`; el namespace oficial `pyannote/speaker-diarization-community-1` requiere token/condiciones HF y queda planificado como primary+fallback en P1.
+- El pipeline primary es `pyannote/speaker-diarization-community-1`; si falla por acceso/gating/model-not-found, el adapter intenta el fallback local validado `pyannote-community/speaker-diarization-community-1`.
+- `device: "auto"` usa CUDA si está disponible y CPU si no; las llamadas largas usan `ProgressHook` cuando pyannote lo expone.
 - Los embeddings por speaker salen de `output.speaker_embeddings` del propio pipeline; no se carga un modelo separado de embeddings.
 - La playlist de pruebas actual es `Play-PoliTest` (`PLE9Zk7g9R__M`) y contiene solo intervenciones de Lilly Téllez.
 - Para el perfil de voz se toma **un solo audio de referencia** de la misma playlist: `su9nURIj9XQ`.

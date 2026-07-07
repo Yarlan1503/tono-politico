@@ -8,8 +8,12 @@ from unittest.mock import patch
 import numpy as np
 import pytest
 
+import tono_politico.diarizacion.service as service_module
+from tono_politico.diarizacion.adapter import LoadedPyannotePipeline
 from tono_politico.diarizacion.service import DiarizacionService
 from tono_politico.models import SegmentoRaw, VideoTranscript, WordTimestamp
+
+FAKE_CREDENTIAL = "HF_TEST_VALUE"
 
 # ──────────────────────────────────────────────────────────
 # Fakes que simulan el output completo de pyannote pipeline
@@ -197,7 +201,9 @@ class TestConstructor:
         assert svc.video_ref_id == "su9nURIj9XQ"
         assert svc.umbral_match == pytest.approx(0.5)
         assert svc.umbral_ambiguo == pytest.approx(0.7)
-        assert "pyannote-community" in svc.pipeline_name
+        assert svc.pipeline_name == "pyannote/speaker-diarization-community-1"
+        assert svc.fallback_pipeline == "pyannote-community/speaker-diarization-community-1"
+        assert svc.device == "auto"
 
     def test_config_personalizada(self):
         svc = DiarizacionService(
@@ -214,6 +220,43 @@ class TestConstructor:
         """El constructor ya no acepta embedding_model (embedding interno del pipeline)."""
         svc = DiarizacionService()
         assert not hasattr(svc, "embedding_model")
+
+    def test_get_pipeline_usa_adapter_primary_fallback_y_device(self, monkeypatch):
+        calls = []
+
+        def fake_load_pyannote_pipeline(**kwargs):
+            calls.append(kwargs)
+            return LoadedPyannotePipeline(
+                pipeline="PIPELINE",
+                pipeline_name="fallback-model",
+                used_fallback=True,
+            )
+
+        monkeypatch.setattr(
+            service_module,
+            "load_pyannote_pipeline",
+            fake_load_pyannote_pipeline,
+        )
+        monkeypatch.setattr(service_module, "_leer_token_hf", lambda: FAKE_CREDENTIAL)
+
+        svc = DiarizacionService(
+            pipeline_name="primary-model",
+            fallback_pipeline="fallback-model",
+            device="auto",
+        )
+
+        pipeline = svc._get_pipeline()
+
+        assert pipeline == "PIPELINE"
+        assert svc.pipeline_name == "fallback-model"
+        assert calls == [
+            {
+                "primary_pipeline": "primary-model",
+                "fallback_pipeline": "fallback-model",
+                "token": FAKE_CREDENTIAL,
+                "device": "auto",
+            }
+        ]
 
 
 # ──────────────────────────────────────────────────────────
