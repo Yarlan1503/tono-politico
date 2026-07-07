@@ -1,53 +1,48 @@
 #!/usr/bin/env python3
 """Punto de entrada del pipeline tono-politico.
 
-Ejecuta el pipeline completo de 7 componentes leyendo la configuración
-desde config/config.yaml.
-
-Flujo de dos fases:
-
-FASE 1 (siempre): Ingesta → Diarización → Segmentación → Temas
-    Descarga, transcribe, identifica al actor, segmenta y descubre tópicos.
-    Imprime los tópicos encontrados en consola.
-
-FASE 2 (con --topico N): Filtrado → Tono → Salida
-    Filtra por el tópico seleccionado, analiza tono y genera informe.
-
-Uso:
-    # Fase 1: descubrir tópicos
-    uv run python main.py --playlist URL
-
-    # Fase 2: analizar un tópico específico
-    uv run python main.py --playlist URL --topico 0 --tema "fracking"
+Ejecuta el pipeline completo leyendo `config/config.yaml` y delega la
+orquestación real a `PipelineRunner`, que es testeable con services fake.
 """
 
 from __future__ import annotations
 
 import argparse
 import logging
-import shutil
-import sys
-from dataclasses import dataclass
+from collections.abc import Sequence
 from pathlib import Path
+from typing import Any
 
 import yaml
 
+from tono_politico.diarizacion import DiarizacionService
+from tono_politico.filtrado import FiltradoService
+from tono_politico.ingesta import IngestaService
 from tono_politico.ingesta.playlist import obtener_info_playlist
+from tono_politico.pipeline import PipelineRunner, ServiceFactories
+from tono_politico.salida import SalidaService
+from tono_politico.segmentacion import SegmentacionService
+from tono_politico.temas import TemasService
 from tono_politico.temas.models import ResultadoTemas
+from tono_politico.tono import TonoService
+
+CONFIG_PATH = Path("config/config.yaml")
+
 
 # ──────────────────────────────────────────────────────────
 # Config loader
 # ──────────────────────────────────────────────────────────
 
-CONFIG_PATH = Path("config/config.yaml")
 
-
-def cargar_config(path: Path = CONFIG_PATH) -> dict:
+def cargar_config(path: Path = CONFIG_PATH) -> dict[str, Any]:
     """Carga config/config.yaml y devuelve el diccionario."""
     if not path.exists():
         raise FileNotFoundError(f"Config no encontrado: {path}")
     with open(path, encoding="utf-8") as f:
-        return yaml.safe_load(f)
+        cfg = yaml.safe_load(f) or {}
+    if not isinstance(cfg, dict):
+        raise ValueError(f"Config debe ser un mapping YAML: {path}")
+    return cfg
 
 
 # ──────────────────────────────────────────────────────────
@@ -55,9 +50,7 @@ def cargar_config(path: Path = CONFIG_PATH) -> dict:
 # ──────────────────────────────────────────────────────────
 
 
-def _build_ingesta(cfg: dict):
-    from tono_politico.ingesta import IngestaService
-
+def _build_ingesta(cfg: dict[str, Any]) -> IngestaService:
     c = cfg.get("ingesta", {})
     return IngestaService(
         data_dir=Path(c.get("data_dir", "data")),
@@ -66,9 +59,7 @@ def _build_ingesta(cfg: dict):
     )
 
 
-def _build_diarizacion(cfg: dict):
-    from tono_politico.diarizacion import DiarizacionService
-
+def _build_diarizacion(cfg: dict[str, Any]) -> DiarizacionService:
     c = cfg.get("diarizacion", {})
     ref = c.get("referencia_voz", {})
     return DiarizacionService(
@@ -81,9 +72,7 @@ def _build_diarizacion(cfg: dict):
     )
 
 
-def _build_segmentacion(cfg: dict):
-    from tono_politico.segmentacion import SegmentacionService
-
+def _build_segmentacion(cfg: dict[str, Any]) -> SegmentacionService:
     c = cfg.get("segmentacion", {})
     return SegmentacionService(
         spacy_model=c.get("spacy_model", "es_core_news_lg"),
@@ -94,9 +83,7 @@ def _build_segmentacion(cfg: dict):
     )
 
 
-def _build_temas(cfg: dict):
-    from tono_politico.temas import TemasService
-
+def _build_temas(cfg: dict[str, Any]) -> TemasService:
     c = cfg.get("temas", {})
     return TemasService(
         min_topic_size=c.get("min_topic_size", 3),
@@ -106,9 +93,7 @@ def _build_temas(cfg: dict):
     )
 
 
-def _build_filtrado(cfg: dict, topico_id: int):
-    from tono_politico.filtrado import FiltradoService
-
+def _build_filtrado(cfg: dict[str, Any], topico_id: int) -> FiltradoService:
     c = cfg.get("filtrado", {})
     return FiltradoService(
         topico_id=topico_id,
@@ -117,77 +102,38 @@ def _build_filtrado(cfg: dict, topico_id: int):
     )
 
 
-def _build_tono(cfg: dict, actor: str, tema: str):
-    from tono_politico.tono import TonoService
-
+def _build_tono(cfg: dict[str, Any], actor: str, tema: str) -> TonoService:
     return TonoService(actor=actor, tema=tema)
 
 
-def _build_salida(cfg: dict, output_path: str | None):
-    from tono_politico.salida import SalidaService
-
+def _build_salida(cfg: dict[str, Any], output_path: str | None) -> SalidaService:
     c = cfg.get("salida", {})
     fmt = c.get("formatos", ["json", "markdown"])
 
     if output_path:
         return SalidaService(output_path=output_path)
-    elif "json" in fmt and "markdown" in fmt:
+    if "json" in fmt and "markdown" in fmt:
         return SalidaService(output_path=Path("output"))
-    else:
-        return SalidaService(output_path=None)
+    return SalidaService(output_path=None)
 
 
-# ──────────────────────────────────────────────────────────
-# Pipeline compartido (FASE 1)
-# ──────────────────────────────────────────────────────────
-
-
-@dataclass
-class Fase1Resultado:
-    """Output de la Fase 1, reutilizable por la Fase 2."""
-    resultado_temas: ResultadoTemas
-    nombre_playlist: str
-
-
-def _ejecutar_fase_1(cfg: dict, playlist_url: str) -> Fase1Resultado:
-    """Ingesta → Diarización → Segmentación → Temas.
-
-    Ejecuta los 4 primeros componentes y devuelve el resultado de Temas.
-    Ambas fases (informativa y completa) reutilizan esta función.
-    """
-    logging.info("═══ FASE 1: Ingesta → Diarización → Segmentación → Temas ═══")
-
-    # 1. Ingesta
-    logging.info("─ Componente 1: Ingesta ─")
-    svc_ingesta = _build_ingesta(cfg)
-    transcripts = svc_ingesta.procesar(playlist_url)
-    logging.info(f"  {len(transcripts)} transcripciones")
-
-    info = obtener_info_playlist(playlist_url)
-    nombre_playlist = info.nombre
-
-    # 1.5 Diarización
-    logging.info("─ Componente 1.5: Diarización ─")
-    svc_diarizacion = _build_diarizacion(cfg)
-    transcripts_actor = svc_diarizacion.procesar(transcripts, nombre_playlist)
-    total_segs_actor = sum(len(t.raw_segments) for t in transcripts_actor)
-    logging.info(f"  {total_segs_actor} segmentos del actor")
-
-    # 2. Segmentación
-    logging.info("─ Componente 2: Segmentación ─")
-    svc_segmentacion = _build_segmentacion(cfg)
-    segmentos = svc_segmentacion.procesar(transcripts_actor)
-    logging.info(f"  {len(segmentos)} segmentos semánticos")
-
-    # 3. Temas
-    logging.info("─ Componente 3: Temas ─")
-    svc_temas = _build_temas(cfg)
-    resultado_temas = svc_temas.procesar(segmentos)
-
-    return Fase1Resultado(
-        resultado_temas=resultado_temas,
-        nombre_playlist=nombre_playlist,
+def _service_factories() -> ServiceFactories:
+    """Construye factories livianas para inyectar al runner."""
+    return ServiceFactories(
+        build_ingesta=_build_ingesta,
+        build_diarizacion=_build_diarizacion,
+        build_segmentacion=_build_segmentacion,
+        build_temas=_build_temas,
+        build_filtrado=_build_filtrado,
+        build_tono=_build_tono,
+        build_salida=_build_salida,
+        get_playlist_info=obtener_info_playlist,
     )
+
+
+# ──────────────────────────────────────────────────────────
+# Presentación CLI
+# ──────────────────────────────────────────────────────────
 
 
 def _imprimir_topicos(resultado: ResultadoTemas) -> None:
@@ -207,103 +153,12 @@ def _imprimir_topicos(resultado: ResultadoTemas) -> None:
     print(
         "\nPara analizar un tópico, ejecuta:\n"
         "  uv run python main.py --playlist URL --topico N "
-        "--tema \"descripcion del tema\"\n"
+        '--tema "descripcion del tema"\n'
     )
 
 
-def _limpiar_cache(cfg: dict, nombre_playlist: str) -> None:
-    """Limpia el cache de audios y transcripciones al finalizar.
-
-    Los datos de runtime (audios .wav, transcripciones JSON) son perecederos:
-    los videos pueden cambiar entre corridas y dejar caches stale.
-    Los modelos (HF hub, Whisper) se mantienen — son persistentes.
-    """
-    data_dir = Path(cfg.get("project", {}).get("data_dir", "data"))
-    playlist_dir = data_dir / nombre_playlist
-
-    if playlist_dir.exists():
-        if cfg.get("_keep_cache"):
-            logging.info(f"Cache conservado (--keep-cache): {playlist_dir}")
-            return
-        logging.info(f"Limpiando cache runtime: {playlist_dir}")
-        shutil.rmtree(playlist_dir)
-        logging.info("Cache limpiado")
-    else:
-        logging.debug(f"Cache no encontrado: {playlist_dir}")
-
-
-# ──────────────────────────────────────────────────────────
-# Fases del CLI
-# ──────────────────────────────────────────────────────────
-
-
-def fase_1(cfg: dict, playlist_url: str) -> None:
-    """Ingesta → Diarización → Segmentación → Temas. Imprime tópicos."""
-    try:
-        resultado = _ejecutar_fase_1(cfg, playlist_url)
-        _imprimir_topicos(resultado.resultado_temas)
-    finally:
-        info = obtener_info_playlist(playlist_url)
-        _limpiar_cache(cfg, info.nombre)
-
-
-def fase_2(
-    cfg: dict,
-    playlist_url: str,
-    topico_id: int,
-    tema: str,
-    output_path: str | None,
-) -> None:
-    """Pipeline completo: Fase 1 + Filtrado → Tono → Salida."""
-    try:
-        logging.info("═══ PIPELINE COMPLETO (Fases 1 + 2) ═══")
-
-        # Fase 1
-        f1 = _ejecutar_fase_1(cfg, playlist_url)
-
-        # 4. Filtrado
-        logging.info(f"─ Componente 4: Filtrado (tópico {topico_id}) ─")
-        svc_filtrado = _build_filtrado(cfg, topico_id)
-        resultado_filtrado = svc_filtrado.procesar(f1.resultado_temas)
-        logging.info(
-            f"  {resultado_filtrado.total_segmentos_filtrados}/"
-            f"{resultado_filtrado.total_segmentos_entrada} segmentos filtrados"
-        )
-
-        if resultado_filtrado.total_segmentos_filtrados == 0:
-            logging.error(
-                f"No hay segmentos para el tópico {topico_id}. "
-                f"Verifica el ID con la fase 1."
-            )
-            sys.exit(1)
-
-        # 5. Tono
-        actor = cfg.get("diarizacion", {}).get("actor_objetivo", "Lilly Téllez")
-        logging.info(f"─ Componente 5: Tono (actor='{actor}', tema='{tema}') ─")
-        svc_tono = _build_tono(cfg, actor, tema)
-        resultado_tono = svc_tono.procesar(resultado_filtrado)
-        logging.info(f"  {len(resultado_tono.segmentos)} segmentos analizados")
-
-        # 6. Salida
-        logging.info("─ Componente 6: Salida ─")
-        svc_salida = _build_salida(cfg, output_path)
-        informe = svc_salida.procesar(resultado_tono)
-        logging.info(
-            f"  Informe generado: {informe.perfil.actor} / {informe.perfil.tema}"
-        )
-
-        print(
-            f"\n✅ Pipeline completo. Informe: "
-            f"{svc_salida.output_path or '(sin disco)'}"
-        )
-    finally:
-        _limpiar_cache(cfg, _get_playlist_name(playlist_url))
-
-
-def _get_playlist_name(playlist_url: str) -> str:
-    """Obtiene el nombre sanitizado de la playlist."""
-    info = obtener_info_playlist(playlist_url)
-    return info.nombre
+def _imprimir_resumen_salida(informe_path: Path | None) -> None:
+    print(f"\n✅ Pipeline completo. Informe: {informe_path or '(sin disco)'}")
 
 
 # ──────────────────────────────────────────────────────────
@@ -311,7 +166,7 @@ def _get_playlist_name(playlist_url: str) -> str:
 # ──────────────────────────────────────────────────────────
 
 
-def main() -> None:
+def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="tono-politico: análisis del tono político en YouTube",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -357,9 +212,8 @@ def main() -> None:
         help="Logging DEBUG en vez de INFO",
     )
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
-    # Logging
     level = logging.DEBUG if args.verbose else logging.INFO
     logging.basicConfig(
         level=level,
@@ -367,23 +221,30 @@ def main() -> None:
         datefmt="%H:%M:%S",
     )
 
-    # Cargar config
-    cfg = cargar_config(Path(args.config))
-
-    # Si --keep-cache, parchamos _limpiar_cache para que no haga nada
-    if args.keep_cache:
-        cfg["_keep_cache"] = True
-
-    # Validar argumentos
     if args.topico is not None and not args.tema:
         parser.error("--tema es obligatorio cuando se usa --topico")
 
-    # Ejecutar
+    cfg = cargar_config(Path(args.config))
+    runner = PipelineRunner(
+        cfg=cfg,
+        factories=_service_factories(),
+        keep_cache=args.keep_cache,
+    )
+
     if args.topico is not None:
-        fase_2(cfg, args.playlist, args.topico, args.tema, args.output)
-    else:
-        fase_1(cfg, args.playlist)
+        tema = args.tema
+        assert tema is not None
+        result = runner.analyze(args.playlist, args.topico, tema, args.output)
+        if result.exit_code == 0:
+            _imprimir_resumen_salida(result.informe_path)
+        return result.exit_code
+
+    result = runner.discover(args.playlist)
+    resultado_temas = getattr(runner, "last_resultado_temas", None)
+    if resultado_temas is not None:
+        _imprimir_topicos(resultado_temas)
+    return result.exit_code
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
