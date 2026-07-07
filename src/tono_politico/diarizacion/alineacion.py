@@ -11,6 +11,7 @@ Criterio: midpoint del segmento = (t_start + t_end) / 2.
 
 from __future__ import annotations
 
+import bisect
 import logging
 
 from ..models import VideoTranscript
@@ -25,31 +26,21 @@ def filtrar_por_actor(
 ) -> VideoTranscript:
     """Filtra un VideoTranscript conservando solo segmentos del actor.
 
-    Para cada SegmentoRaw, calcula el midpoint temporal y verifica si
-    cae dentro de algún turno del actor en el mismo video. Solo se
-    conservan los segmentos que coinciden.
+    Para cada SegmentoRaw, calcula el midpoint temporal y usa ``bisect``
+    sobre un índice ordenado de turnos para verificar coincidencia en
+    O(log M) por segmento, en vez de búsqueda lineal.
 
-    Args:
-        transcript: VideoTranscript con todos los segmentos del video.
-        turnos_actor: Turnos del actor objetivo (pueden incluir otros
-            videos; se filtran por video_id).
-
-    Returns:
-        Nuevo VideoTranscript con metadata preservada y solo los
-        segmentos atribuidos al actor.
+    Inclusivo en ``t_start`` del turno, exclusivo en ``t_end``.
+    Turnos de otro ``video_id`` se ignoran.
     """
-    # Filtrar turnos del mismo video
-    rangos = [
-        (t.t_start, t.t_end)
-        for t in turnos_actor
-        if t.video_id == transcript.video_id
-    ]
+    # Filtrar y ordenar turnos del mismo video por t_start
+    rangos = sorted(
+        ((t.t_start, t.t_end) for t in turnos_actor if t.video_id == transcript.video_id),
+        key=lambda r: r[0],
+    )
 
     if not rangos:
-        logger.info(
-            f"Sin turnos del actor en video {transcript.video_id}, "
-            f"0 segmentos conservados"
-        )
+        logger.info(f"Sin turnos del actor en video {transcript.video_id}, 0 segmentos conservados")
         return VideoTranscript(
             video_id=transcript.video_id,
             url=transcript.url,
@@ -58,9 +49,13 @@ def filtrar_por_actor(
             raw_segments=[],
         )
 
+    # Construir índice de starts para bisect
+    starts = [r[0] for r in rangos]
+
     conservados = [
-        seg for seg in transcript.raw_segments
-        if _midpoint_en_rangos(seg.t_start, seg.t_end, rangos)
+        seg
+        for seg in transcript.raw_segments
+        if _midpoint_en_rangos_bisect(seg.t_start, seg.t_end, starts, rangos)
     ]
 
     logger.info(
@@ -77,17 +72,26 @@ def filtrar_por_actor(
     )
 
 
-def _midpoint_en_rangos(
+def _midpoint_en_rangos_bisect(
     t_start: float,
     t_end: float,
+    starts: list[float],
     rangos: list[tuple[float, float]],
 ) -> bool:
     """Verifica si el midpoint de [t_start, t_end] cae en algún rango.
 
+    Usa ``bisect_right`` para encontrar el último turno cuyo ``t_start``
+    es <= midpoint, luego verifica ``midpoint < t_end``.
+
     Inclusivo en el inicio del rango, exclusivo en el fin.
     """
     midpoint = (t_start + t_end) / 2.0
-    for r_start, r_end in rangos:
-        if r_start <= midpoint < r_end:
-            return True
-    return False
+
+    # bisect_right encuentra la posición de inserción después de todos
+    # los starts <= midpoint. Restamos 1 para obtener el último candidato.
+    idx = bisect.bisect_right(starts, midpoint) - 1
+    if idx < 0:
+        return False
+
+    r_start, r_end = rangos[idx]
+    return r_start <= midpoint < r_end
