@@ -511,7 +511,7 @@ inputs = {k: v.to(self._device) for k, v in inputs.items()}
 
 ---
 
-### P2 — Flujo de ejecución, cache, resume y UX
+### P2 — Flujo de ejecución, cache, resume y UX ✅ COMPLETADO
 
 #### Task 10: Crear `RunManifest` persistente y resumen final
 
@@ -642,7 +642,7 @@ class DownloadResult:
 
 ---
 
-### P2 — Calidad semántica y escalabilidad
+### P2 — Calidad semántica y escalabilidad ✅ COMPLETADO
 
 #### Task 14: Hacer topic modeling reproducible y robusto en datasets pequeños
 
