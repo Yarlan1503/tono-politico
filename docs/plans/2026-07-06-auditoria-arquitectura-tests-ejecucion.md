@@ -228,7 +228,7 @@ Expected: no referencias obsoletas, salvo si aparecen en una sección histórica
 
 ---
 
-### P1 — Orquestación testeable y contratos de ejecución
+### P1 — Orquestación testeable y contratos de ejecución ✅ COMPLETADO
 
 #### Task 3: Introducir DTOs de ejecución del pipeline
 
@@ -392,7 +392,7 @@ class DiarizacionConfig:
 
 ---
 
-### P1 — Robustez de modelos y performance
+### P1 — Robustez de modelos y performance ✅ COMPLETADO
 
 #### Task 6: Encapsular pyannote en adapter oficial/fallback
 
