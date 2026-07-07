@@ -17,7 +17,7 @@ from tono_politico.diarizacion import DiarizacionService
 from tono_politico.filtrado import FiltradoService
 from tono_politico.ingesta import IngestaService
 from tono_politico.ingesta.playlist import obtener_info_playlist
-from tono_politico.pipeline import PipelineRunner, ServiceFactories
+from tono_politico.pipeline import PipelineRunner, ServiceFactories, resumen_final
 from tono_politico.salida import SalidaService
 from tono_politico.segmentacion import SegmentacionService
 from tono_politico.temas import TemasService
@@ -142,8 +142,11 @@ def _imprimir_topicos(resultado: ResultadoTemas) -> None:
     )
 
 
-def _imprimir_resumen_salida(informe_path: Path | None) -> None:
-    print(f"\n✅ Pipeline completo. Informe: {informe_path or '(sin disco)'}")
+def _imprimir_resumen_salida(result) -> None:
+    """Imprime el resumen final con datos del manifest."""
+    print("\n" + "=" * 60)
+    print(resumen_final(result))
+    print("=" * 60)
 
 
 def _imprimir_resumen_fallo(result) -> None:
@@ -232,7 +235,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         assert tema is not None
         result = runner.analyze(args.playlist, args.topico, tema, args.output)
         if result.exit_code == 0:
-            _imprimir_resumen_salida(result.informe_path)
+            _imprimir_resumen_salida(result)
         else:
             _imprimir_resumen_fallo(result)
         return result.exit_code
@@ -241,6 +244,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if result.exit_code != 0:
         _imprimir_resumen_fallo(result)
         return result.exit_code
+    _imprimir_resumen_salida(result)
     resultado_temas = getattr(runner, "last_resultado_temas", None)
     if resultado_temas is not None:
         _imprimir_topicos(resultado_temas)

@@ -179,4 +179,5 @@ class TestRunResult:
             },
             "exit_code": 0,
             "informe_path": Path("output/informe.json"),
+            "manifest_path": None,
         }

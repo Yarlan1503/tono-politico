@@ -67,3 +67,4 @@ class RunResult:
     manifest: RunManifest
     exit_code: int = 0
     informe_path: Path | None = None
+    manifest_path: Path | None = None

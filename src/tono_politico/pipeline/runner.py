@@ -18,6 +18,7 @@ from tono_politico.config import Config
 from tono_politico.models import PlaylistInfo, VideoTranscript
 from tono_politico.temas.models import ResultadoTemas
 
+from .manifest import guardar_manifest
 from .models import PhaseName, PhaseRunStatus, RunManifest, RunResult, VideoRunStatus
 
 logger = logging.getLogger(__name__)
@@ -62,11 +63,17 @@ class PipelineRunner:
         try:
             fase_1 = self._ejecutar_fase_1(playlist_url)
             manifest = fase_1.manifest
-            return RunResult(manifest=manifest, exit_code=0)
+            manifest_path = self._persistir_manifest(manifest)
+            return RunResult(manifest=manifest, exit_code=0, manifest_path=manifest_path)
         except Exception:
             manifest = self._active_manifest or _failure_manifest(playlist_url)
             manifest.status = "failed"
-            return RunResult(manifest=manifest, exit_code=1)
+            manifest_path = self._persistir_manifest(manifest)
+            return RunResult(
+                manifest=manifest,
+                exit_code=1,
+                manifest_path=manifest_path,
+            )
         finally:
             if manifest is not None:
                 self._limpiar_cache(manifest.playlist_name)
@@ -114,15 +121,22 @@ class PipelineRunner:
             self._run_phase(manifest, "salida", lambda: svc_salida.procesar(resultado_tono))
 
             informe_path = getattr(svc_salida, "output_path", None)
+            manifest_path = self._persistir_manifest(manifest)
             return RunResult(
                 manifest=manifest,
                 exit_code=0,
                 informe_path=Path(informe_path) if informe_path is not None else None,
+                manifest_path=manifest_path,
             )
         except Exception:
             manifest = self._active_manifest or _failure_manifest(playlist_url)
             manifest.status = "failed"
-            return RunResult(manifest=manifest, exit_code=1)
+            manifest_path = self._persistir_manifest(manifest)
+            return RunResult(
+                manifest=manifest,
+                exit_code=1,
+                manifest_path=manifest_path,
+            )
         finally:
             if manifest is not None:
                 self._limpiar_cache(manifest.playlist_name)
@@ -206,6 +220,19 @@ class PipelineRunner:
 
     def _cache_dir(self, playlist_name: str) -> Path:
         return self.cfg.project.data_dir / playlist_name
+
+    def _persistir_manifest(self, manifest: RunManifest) -> Path | None:
+        """Persiste el manifest en ``output/runs/<run_id>/manifest.json``.
+
+        Si la escritura falla, registra warning y devuelve None
+        (no debe interrumpir el flujo del pipeline).
+        """
+        output_base = self.cfg.project.output_dir
+        try:
+            return guardar_manifest(manifest, output_base)
+        except Exception:
+            logger.warning("No se pudo persistir el manifest", exc_info=True)
+            return None
 
     def _limpiar_cache(self, playlist_name: str) -> None:
         if not playlist_name:

@@ -1,5 +1,6 @@
 """Orquestación testeable del pipeline Tono Político."""
 
+from .manifest import guardar_manifest, manifest_to_dict, manifest_to_json, resumen_final
 from .models import (
     PhaseName,
     PhaseRunStatus,
@@ -20,4 +21,8 @@ __all__ = [
     "RunStatus",
     "ServiceFactories",
     "VideoRunStatus",
+    "guardar_manifest",
+    "manifest_to_dict",
+    "manifest_to_json",
+    "resumen_final",
 ]
