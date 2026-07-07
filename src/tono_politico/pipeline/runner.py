@@ -54,6 +54,7 @@ class PipelineRunner:
     cfg: Config
     factories: ServiceFactories
     keep_cache: bool = False
+    run_id: str | None = None
     last_resultado_temas: ResultadoTemas | None = field(default=None, init=False)
     _active_manifest: RunManifest | None = field(default=None, init=False, repr=False)
 
@@ -186,7 +187,7 @@ class PipelineRunner:
 
     def _crear_manifest(self, playlist_url: str, info: PlaylistInfo) -> RunManifest:
         manifest = RunManifest(
-            run_id=_run_id(),
+            run_id=self.run_id if self.run_id else _run_id(),
             playlist_url=playlist_url,
             playlist_name=info.nombre,
             status="ok",

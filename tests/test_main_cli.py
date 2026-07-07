@@ -24,10 +24,17 @@ def _load_cli_module():
 class FakeRunner:
     instances: list[FakeRunner] = []
 
-    def __init__(self, cfg: dict[str, Any], factories: Any, keep_cache: bool = False):
+    def __init__(
+        self,
+        cfg: dict[str, Any],
+        factories: Any,
+        keep_cache: bool = False,
+        run_id: str | None = None,
+    ):
         self.cfg = cfg
         self.factories = factories
         self.keep_cache = keep_cache
+        self.run_id = run_id
         self.discover_calls: list[str] = []
         self.analyze_calls: list[tuple[str, int, str, str | None]] = []
         self.analyze_resume_calls: list[tuple[str, int, str, str | None]] = []

@@ -212,6 +212,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="Directorio de run anterior con fase1-topicos.json para reusar Fase 1.",
     )
     parser.add_argument(
+        "--run-id",
+        type=str,
+        default=None,
+        help="ID personalizado para la corrida (default: timestamp automático).",
+    )
+    parser.add_argument(
         "--verbose",
         action="store_true",
         help="Logging DEBUG en vez de INFO",
@@ -240,6 +246,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         cfg=cfg,
         factories=_service_factories(),
         keep_cache=args.keep_cache,
+        run_id=args.run_id,
     )
 
     # --resume: reusa Fase 1 desde disco, ejecuta solo Fase 2
