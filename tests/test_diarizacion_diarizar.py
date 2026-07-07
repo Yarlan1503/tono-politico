@@ -16,6 +16,7 @@ from tono_politico.diarizacion.models import TurnoOrador
 @dataclass
 class FakeSegment:
     """Simula pyannote.core.Segment con start/end."""
+
     start: float
     end: float
 
@@ -23,6 +24,7 @@ class FakeSegment:
 @dataclass
 class FakeExclusiveDiarization:
     """Simula output.exclusive_speaker_diarization con itertracks."""
+
     tracks: list[tuple[FakeSegment, str, str]]  # (segment, track, label)
 
     def itertracks(self, yield_label=True):
@@ -36,6 +38,7 @@ class FakeExclusiveDiarization:
 @dataclass
 class FakeDiarizationOutput:
     """Simula el objeto de salida de Pipeline.__call__."""
+
     _exclusive: FakeExclusiveDiarization
 
     @property
@@ -48,7 +51,7 @@ class FakePipeline:
 
     def __init__(self, tracks_by_audio: dict[str, list[tuple[float, float, str]]]):
         """Args:
-            tracks_by_audio: {audio_path_str: [(start, end, speaker_label), ...]}
+        tracks_by_audio: {audio_path_str: [(start, end, speaker_label), ...]}
         """
         self._tracks = tracks_by_audio
 
@@ -56,8 +59,7 @@ class FakePipeline:
         key = str(audio_path)
         raw_tracks = self._tracks.get(key, [])
         tracks = [
-            (FakeSegment(s, e), f"track_{i}", label)
-            for i, (s, e, label) in enumerate(raw_tracks)
+            (FakeSegment(s, e), f"track_{i}", label) for i, (s, e, label) in enumerate(raw_tracks)
         ]
         return FakeDiarizationOutput(FakeExclusiveDiarization(tracks))
 
@@ -73,13 +75,15 @@ class TestDiarizar:
     def test_un_speaker_varios_turnos(self):
         """Un audio con un solo orador produce turnos con el mismo speaker_id."""
         audio = Path("/fake/audio.wav")
-        pipeline = FakePipeline({
-            str(audio): [
-                (0.0, 3.5, "SPEAKER_00"),
-                (4.0, 8.2, "SPEAKER_00"),
-                (9.0, 12.0, "SPEAKER_00"),
-            ],
-        })
+        pipeline = FakePipeline(
+            {
+                str(audio): [
+                    (0.0, 3.5, "SPEAKER_00"),
+                    (4.0, 8.2, "SPEAKER_00"),
+                    (9.0, 12.0, "SPEAKER_00"),
+                ],
+            }
+        )
 
         turnos = diarizar(audio, pipeline, video_id="abc123")
 
@@ -94,13 +98,15 @@ class TestDiarizar:
     def test_dos_speakers_intercalados(self):
         """Dos oradores intercalados producen turnos etiquetados correctamente."""
         audio = Path("/fake/audio.wav")
-        pipeline = FakePipeline({
-            str(audio): [
-                (0.0, 5.0, "SPEAKER_00"),
-                (5.5, 10.0, "SPEAKER_01"),
-                (10.5, 15.0, "SPEAKER_00"),
-            ],
-        })
+        pipeline = FakePipeline(
+            {
+                str(audio): [
+                    (0.0, 5.0, "SPEAKER_00"),
+                    (5.5, 10.0, "SPEAKER_01"),
+                    (10.5, 15.0, "SPEAKER_00"),
+                ],
+            }
+        )
 
         turnos = diarizar(audio, pipeline, video_id="vid1")
 
@@ -121,9 +127,11 @@ class TestDiarizar:
     def test_video_id_se_propaga(self):
         """Cada turno lleva el video_id correcto."""
         audio = Path("/fake/v.wav")
-        pipeline = FakePipeline({
-            str(audio): [(0.0, 2.0, "SPEAKER_00")],
-        })
+        pipeline = FakePipeline(
+            {
+                str(audio): [(0.0, 2.0, "SPEAKER_00")],
+            }
+        )
 
         turnos = diarizar(audio, pipeline, video_id="xyz789")
 
@@ -132,13 +140,15 @@ class TestDiarizar:
     def test_tres_speakers(self):
         """Tres oradores distintos en el mismo audio."""
         audio = Path("/fake/debate.wav")
-        pipeline = FakePipeline({
-            str(audio): [
-                (0.0, 3.0, "SPEAKER_00"),
-                (3.0, 6.0, "SPEAKER_01"),
-                (6.0, 9.0, "SPEAKER_02"),
-            ],
-        })
+        pipeline = FakePipeline(
+            {
+                str(audio): [
+                    (0.0, 3.0, "SPEAKER_00"),
+                    (3.0, 6.0, "SPEAKER_01"),
+                    (6.0, 9.0, "SPEAKER_02"),
+                ],
+            }
+        )
 
         turnos = diarizar(audio, pipeline, video_id="debate")
 
@@ -147,9 +157,11 @@ class TestDiarizar:
 
     def test_audio_path_como_string(self):
         """diarizar acepta Path o str para audio_path."""
-        pipeline = FakePipeline({
-            "/fake/str.wav": [(0.0, 1.0, "SPEAKER_00")],
-        })
+        pipeline = FakePipeline(
+            {
+                "/fake/str.wav": [(0.0, 1.0, "SPEAKER_00")],
+            }
+        )
 
         turnos = diarizar("/fake/str.wav", pipeline, video_id="s1")
 

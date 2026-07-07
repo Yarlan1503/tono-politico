@@ -211,7 +211,7 @@ Se usa `output.exclusive_speaker_diarization` en vez del `itertracks` estándar.
 
 ### Pipeline cargado una vez y embeddings nativos del output
 
-`DiarizacionService` hace lazy-loading de pyannote (`_get_pipeline`) y del helper de audio (`_get_audio_helper`). Para cada video usa una sola llamada al pipeline y extrae turnos desde `exclusive_speaker_diarization` y embeddings desde `output.speaker_embeddings`; esto evita cargar un modelo separado y mantiene los contratos serializables.
+`DiarizacionService` hace lazy-loading de pyannote (`_get_pipeline`) y construye el perfil de referencia desde el mismo `output.speaker_embeddings` público del pipeline. Para cada video usa una sola llamada al pipeline y extrae turnos desde `exclusive_speaker_diarization` y embeddings desde `output.speaker_embeddings`; esto evita cargar un modelo separado o recurrir a APIs privadas, y mantiene los contratos serializables.
 
 ### Criterio midpoint en alineación
 
@@ -241,14 +241,15 @@ Los thresholds por defecto (`umbral_match=0.5`, `umbral_ambiguo=0.7`) están cal
 
 - El clustering threshold de **pyannote 3.1** es **0.7046** (distancia coseno); `umbral_ambiguo=0.7` queda alineado con ese punto de operación.
 - **SpeechBrain ECAPA-TDNN** usa threshold de similitud ~0.25 (distancia ~0.75); la zona ambigua absorbe ese rango.
-- En el smoke Play-PoliTest, 3 videos reales produjeron distancias `0.075–0.131`, muy por debajo de `umbral_match=0.5`.
+- En el smoke inicial de Play-PoliTest, 3 videos reales produjeron distancias `0.075–0.131`, muy por debajo de `umbral_match=0.5`.
+- En el smoke Fase 1 `politest-smoke-device-fix`, 7/7 videos de Play-PoliTest fueron procesados con éxito: 139 segmentos del actor, 2 tópicos descubiertos, 0 videos omitidos.
 
 Fuentes consultadas:
 
 - pyannote.audio 3.1 — clustering threshold 0.7046
 - SpeechBrain ECAPA-TDNN — threshold de similitud 0.25
 - Community discussions (Hugging Face forums, pyannote-audio issues)
-- Smoke local Play-PoliTest — distancias 0.075–0.131 en 3 videos reales
+- Smoke local Play-PoliTest — distancias 0.075–0.131 en 3 videos reales y validación Fase 1 completa sobre 7 videos
 
 ### Match ambiguo: descartar y continuar
 
@@ -271,4 +272,4 @@ El contrato de salida es `list[VideoTranscript]` —mismo tipo que la entrada—
 
 - El `PerfilVozActor` **no se persiste** en disco — el cache es solo en memoria durante la ejecución del pipeline.
 - El `DiarizacionService` resuelve rutas de audio con `ruta_audio()` del Componente 1 (Ingesta), asumiendo que los `.wav` ya fueron descargados.
-- **Smoke test completado:** perfil + matching fue validado en 3 videos reales de `Play-PoliTest`; las distancias observadas (`0.075–0.131`) quedan muy por debajo del umbral de aceptación `0.5`. El video `71GicqtYqpQ` sigue documentado como fallo controlado de descarga 403.
+- **Smoke Fase 1 real completado:** perfil + matching + segmentación + temas fueron validados en `politest-smoke-device-fix` sobre los 7 videos de `Play-PoliTest`; 7/7 procesados, 139 segmentos del actor, 2 tópicos descubiertos y 0 videos omitidos. El fallo previo de pyannote 4.x (`pipeline.to(str)`) se corrigió pasando `torch.device` al pipeline.

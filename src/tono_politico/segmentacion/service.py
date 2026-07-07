@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     class EmbeddingLike(Protocol):
         def encode(self, texts: list[str]) -> list[list[float]]: ...
 
+
 logger = logging.getLogger(__name__)
 
 
@@ -61,9 +62,7 @@ class SegmentacionService:
         self._nlp: SpacyLike | None = None
         self._embedder: EmbeddingLike | None = None
 
-    def procesar(
-        self, transcripts: list[VideoTranscript]
-    ) -> list[Segmento]:
+    def procesar(self, transcripts: list[VideoTranscript]) -> list[Segmento]:
         """Segmenta transcripciones en bloques semánticamente coherentes.
 
         Args:
@@ -82,9 +81,7 @@ class SegmentacionService:
 
         for transcript in transcripts:
             if not transcript.raw_segments:
-                logger.info(
-                    f"Video {transcript.video_id} sin raw_segments, omitiendo"
-                )
+                logger.info(f"Video {transcript.video_id} sin raw_segments, omitiendo")
                 continue
 
             # 1. Extraer oraciones
@@ -93,9 +90,7 @@ class SegmentacionService:
                 continue
 
             # 2. Detectar breakpoints semánticos
-            breakpoints = detectar_breakpoints(
-                oraciones, embedder, self.breakpoint_percentile
-            )
+            breakpoints = detectar_breakpoints(oraciones, embedder, self.breakpoint_percentile)
 
             # 3. Agrupar en segmentos
             segmentos = agrupar_segmentos(
@@ -110,8 +105,7 @@ class SegmentacionService:
             todos_segmentos.extend(segmentos)
 
         logger.info(
-            f"Segmentación completa: {len(todos_segmentos)} segmentos "
-            f"de {len(transcripts)} videos"
+            f"Segmentación completa: {len(todos_segmentos)} segmentos de {len(transcripts)} videos"
         )
         return todos_segmentos
 
@@ -132,7 +126,5 @@ class SegmentacionService:
             )
 
             logger.info("Cargando modelo: LiquidAI/LFM2.5-Embedding-350M")
-            self._embedder = SentenceTransformer(
-                "LiquidAI/LFM2.5-Embedding-350M"
-            )
+            self._embedder = SentenceTransformer("LiquidAI/LFM2.5-Embedding-350M")
         return self._embedder

@@ -129,14 +129,11 @@ class TonoService:
 
             for dim in self._proto_dims:
                 proto_labels = list(proto_embs[dim].keys())
-                proto_matrix = np.array([
-                    proto_embs[dim][label] for label in proto_labels
-                ])
+                proto_matrix = np.array([proto_embs[dim][label] for label in proto_labels])
                 sims = cosine_similarity_batch(text_emb, proto_matrix)
 
                 scores[dim] = {
-                    label: float(sim)
-                    for label, sim in zip(proto_labels, sims, strict=True)
+                    label: float(sim) for label, sim in zip(proto_labels, sims, strict=True)
                 }
 
             logica, sent, estilo, func, intensidad = mapear_scores(scores)
@@ -182,9 +179,7 @@ class TonoService:
             self._clasificador = ClasificadorLLM()
         return self._clasificador
 
-    def _get_proto_embs(
-        self, embeddor: EmbeddorTono
-    ) -> dict[str, dict[str, np.ndarray]]:
+    def _get_proto_embs(self, embeddor: EmbeddorTono) -> dict[str, dict[str, np.ndarray]]:
         """Embebe todos los prototipos una sola vez (cache)."""
         if self._proto_embs:
             return self._proto_embs

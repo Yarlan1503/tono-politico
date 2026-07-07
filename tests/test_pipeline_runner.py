@@ -225,9 +225,7 @@ class TestPipelineRunnerDiscover:
             build_filtrado=factories.build_filtrado,
             build_tono=factories.build_tono,
             build_salida=factories.build_salida,
-            get_playlist_info=lambda url: (_ for _ in ()).throw(
-                RuntimeError("playlist info rota")
-            ),
+            get_playlist_info=lambda url: (_ for _ in ()).throw(RuntimeError("playlist info rota")),
         )
         runner = PipelineRunner(cfg=_cfg(data_dir), factories=factories, keep_cache=False)
 
@@ -331,9 +329,7 @@ class TestPipelineRunnerAnalyze:
             build_filtrado=factories.build_filtrado,
             build_tono=factories.build_tono,
             build_salida=factories.build_salida,
-            get_playlist_info=lambda url: (_ for _ in ()).throw(
-                RuntimeError("playlist info rota")
-            ),
+            get_playlist_info=lambda url: (_ for _ in ()).throw(RuntimeError("playlist info rota")),
         )
         runner = PipelineRunner(cfg=_cfg(data_dir), factories=factories, keep_cache=False)
 

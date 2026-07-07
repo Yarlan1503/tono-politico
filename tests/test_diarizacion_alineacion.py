@@ -117,11 +117,13 @@ class TestMultiplesTurnos:
 
     def test_actor_habla_dos_veces(self):
         """Actor habla en dos rangos; segmentos en ambos se conservan."""
-        transcript = _transcript([
-            _seg("Primera parte", 1.0, 3.0),   # midpoint 2.0 → en turno 0-4
-            _seg("Entrevistador", 5.0, 7.0),    # midpoint 6.0 → fuera
-            _seg("Segunda parte", 9.0, 11.0),   # midpoint 10.0 → en turno 8-12
-        ])
+        transcript = _transcript(
+            [
+                _seg("Primera parte", 1.0, 3.0),  # midpoint 2.0 → en turno 0-4
+                _seg("Entrevistador", 5.0, 7.0),  # midpoint 6.0 → fuera
+                _seg("Segunda parte", 9.0, 11.0),  # midpoint 10.0 → en turno 8-12
+            ]
+        )
         turnos = [
             _turno("v1", "SPEAKER_00", 0.0, 4.0),
             _turno("v1", "SPEAKER_00", 8.0, 12.0),
@@ -135,11 +137,13 @@ class TestMultiplesTurnos:
 
     def test_tres_segmentos_uno_por_rango(self):
         """Tres segmentos, cada uno cae en un turno distinto del actor."""
-        transcript = _transcript([
-            _seg("Uno", 0.5, 1.5),    # midpoint 1.0 → turno A
-            _seg("Dos", 5.0, 6.0),    # midpoint 5.5 → turno B
-            _seg("Tres", 9.0, 10.0),  # midpoint 9.5 → turno C
-        ])
+        transcript = _transcript(
+            [
+                _seg("Uno", 0.5, 1.5),  # midpoint 1.0 → turno A
+                _seg("Dos", 5.0, 6.0),  # midpoint 5.5 → turno B
+                _seg("Tres", 9.0, 10.0),  # midpoint 9.5 → turno C
+            ]
+        )
         turnos = [
             _turno("v1", "SPEAKER_00", 0.0, 2.0),
             _turno("v1", "SPEAKER_00", 4.0, 7.0),
@@ -206,14 +210,16 @@ class TestPreservacionEstructura:
 
     def test_orden_se_preserva(self):
         """Los segmentos conservados mantienen el orden cronológico original."""
-        transcript = _transcript([
-            _seg("A", 1.0, 2.0),
-            _seg("B", 3.0, 4.0),
-            _seg("C", 5.0, 6.0),
-        ])
+        transcript = _transcript(
+            [
+                _seg("A", 1.0, 2.0),
+                _seg("B", 3.0, 4.0),
+                _seg("C", 5.0, 6.0),
+            ]
+        )
         turnos = [
-            _turno("v1", "SPEAKER_00", 0.0, 2.5),   # A sí, B no, C sí
-            _turno("v1", "SPEAKER_00", 4.5, 7.0),   # C sí
+            _turno("v1", "SPEAKER_00", 0.0, 2.5),  # A sí, B no, C sí
+            _turno("v1", "SPEAKER_00", 4.5, 7.0),  # C sí
         ]
 
         resultado = filtrar_por_actor(transcript, turnos)
@@ -250,10 +256,12 @@ class TestEdgeCases:
 
     def test_no_hay_match_ninguno(self):
         """Ningún segmento coincide con el actor → todos descartados."""
-        transcript = _transcript([
-            _seg("Uno", 0.0, 2.0),
-            _seg("Dos", 4.0, 6.0),
-        ])
+        transcript = _transcript(
+            [
+                _seg("Uno", 0.0, 2.0),
+                _seg("Dos", 4.0, 6.0),
+            ]
+        )
         turnos = [_turno("v1", "SPEAKER_00", 10.0, 20.0)]
 
         resultado = filtrar_por_actor(transcript, turnos)
@@ -262,11 +270,13 @@ class TestEdgeCases:
 
     def test_todos_coinciden(self):
         """Todos los segmentos coinciden con el actor → todos conservados."""
-        transcript = _transcript([
-            _seg("Uno", 1.0, 2.0),
-            _seg("Dos", 3.0, 4.0),
-            _seg("Tres", 5.0, 6.0),
-        ])
+        transcript = _transcript(
+            [
+                _seg("Uno", 1.0, 2.0),
+                _seg("Dos", 3.0, 4.0),
+                _seg("Tres", 5.0, 6.0),
+            ]
+        )
         turnos = [_turno("v1", "SPEAKER_00", 0.0, 10.0)]
 
         resultado = filtrar_por_actor(transcript, turnos)

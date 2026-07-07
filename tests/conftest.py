@@ -61,26 +61,30 @@ def playlist_vacia_mock() -> PlaylistInfo:
 def yt_dlp_json_output() -> list[str]:
     """Simula la salida JSON línea-por-línea de yt-dlp --flat-playlist -j."""
     return [
-        json.dumps({
-            "_type": "url",
-            "ie_key": "Youtube",
-            "id": "vid001",
-            "title": "Video Uno",
-            "url": "https://www.youtube.com/watch?v=vid001",
-            "duration": 120.0,
-            "upload_date": "20260101",
-            "playlist": "TestPlaylist",
-        }),
-        json.dumps({
-            "_type": "url",
-            "ie_key": "Youtube",
-            "id": "vid002",
-            "title": "Video Dos",
-            "url": "https://www.youtube.com/watch?v=vid002",
-            "duration": 300.0,
-            "upload_date": "20260201",
-            "playlist": "TestPlaylist",
-        }),
+        json.dumps(
+            {
+                "_type": "url",
+                "ie_key": "Youtube",
+                "id": "vid001",
+                "title": "Video Uno",
+                "url": "https://www.youtube.com/watch?v=vid001",
+                "duration": 120.0,
+                "upload_date": "20260101",
+                "playlist": "TestPlaylist",
+            }
+        ),
+        json.dumps(
+            {
+                "_type": "url",
+                "ie_key": "Youtube",
+                "id": "vid002",
+                "title": "Video Dos",
+                "url": "https://www.youtube.com/watch?v=vid002",
+                "duration": 300.0,
+                "upload_date": "20260201",
+                "playlist": "TestPlaylist",
+            }
+        ),
     ]
 
 

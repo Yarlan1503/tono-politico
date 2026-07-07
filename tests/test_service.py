@@ -79,9 +79,7 @@ class TestIngestaService:
         assert mock_transcribir.call_count == 3
         assert resultados[0].raw_segments == transcript_mock.raw_segments
         # Verificar que se guardaron en disco
-        dir_t = tmp_path / playlist_mock.nombre / (
-            f"transcripciones-{playlist_mock.nombre}"
-        )
+        dir_t = tmp_path / playlist_mock.nombre / (f"transcripciones-{playlist_mock.nombre}")
         for video in playlist_mock.videos:
             assert (dir_t / f"{video.id}.json").exists()
 
@@ -114,14 +112,10 @@ class TestIngestaService:
 
         assert len(resultados) == 3
         assert mock_descargar.call_count == 2
-        transcribed_video_ids = {
-            call.args[0].id for call in mock_descargar.call_args_list
-        }
+        transcribed_video_ids = {call.args[0].id for call in mock_descargar.call_args_list}
         assert "vid001" not in transcribed_video_ids
 
-    def test_playlist_vacia_devuelve_lista_vacia(
-        self, playlist_vacia_mock, tmp_path
-    ):
+    def test_playlist_vacia_devuelve_lista_vacia(self, playlist_vacia_mock, tmp_path):
         """Playlist sin videos devuelve lista vacía sin errores."""
         svc = IngestaService(data_dir=tmp_path)
 

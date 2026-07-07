@@ -186,9 +186,7 @@ class TestGenerarPerfil:
             seg_tono(stance="rechazo", intensidad=4, populista=0.7),
             seg_tono(stance="rechazo", intensidad=5, populista=0.6),
         ]
-        resultado_tono = ResultadoTono(
-            tema="fracking", actor="AMLO", segmentos=segmentos
-        )
+        resultado_tono = ResultadoTono(tema="fracking", actor="AMLO", segmentos=segmentos)
         perfil = generar_perfil(resultado_tono)
 
         assert perfil.actor == "AMLO"

@@ -31,26 +31,41 @@ def _resultado_tono(n: int = 2) -> ResultadoTono:
             word_count=3,
             video_id="v1",
         )
-        segmentos.append(SegmentoConTono(
-            segmento=seg,
-            stance=ResultadoStance(stance="rechazo" if i % 2 == 0 else "apoyo", confianza=0.8),
-            intensidad_antagonica=3 + (i % 2),
-            logica_politica=ResultadoLogicaPolitica(
-                nacionalista=0.55, globalista=0.30, populista=0.65,
-                tecnocrata=0.25, corporativista=0.40, estatista=0.50,
-            ),
-            sentimiento=ResultadoSentimiento(
-                esperanza=0.35, angustia=0.60, indignacion=0.55,
-                orgullo=0.30, empatia=0.35,
-            ),
-            estilo_discursivo=ResultadoEstiloDiscursivo(
-                directo=0.65, academico=0.35, confrontativo=0.55,
-                conciliador=0.40, catastrofista=0.45, testimonial=0.30,
-            ),
-            funcion_discursiva=ResultadoFuncionDiscursiva(
-                critica=0.60, propuesta=0.35, narrativa_personal=0.30,
-            ),
-        ))
+        segmentos.append(
+            SegmentoConTono(
+                segmento=seg,
+                stance=ResultadoStance(stance="rechazo" if i % 2 == 0 else "apoyo", confianza=0.8),
+                intensidad_antagonica=3 + (i % 2),
+                logica_politica=ResultadoLogicaPolitica(
+                    nacionalista=0.55,
+                    globalista=0.30,
+                    populista=0.65,
+                    tecnocrata=0.25,
+                    corporativista=0.40,
+                    estatista=0.50,
+                ),
+                sentimiento=ResultadoSentimiento(
+                    esperanza=0.35,
+                    angustia=0.60,
+                    indignacion=0.55,
+                    orgullo=0.30,
+                    empatia=0.35,
+                ),
+                estilo_discursivo=ResultadoEstiloDiscursivo(
+                    directo=0.65,
+                    academico=0.35,
+                    confrontativo=0.55,
+                    conciliador=0.40,
+                    catastrofista=0.45,
+                    testimonial=0.30,
+                ),
+                funcion_discursiva=ResultadoFuncionDiscursiva(
+                    critica=0.60,
+                    propuesta=0.35,
+                    narrativa_personal=0.30,
+                ),
+            )
+        )
     return ResultadoTono(tema="fracking", actor="AMLO", segmentos=segmentos)
 
 

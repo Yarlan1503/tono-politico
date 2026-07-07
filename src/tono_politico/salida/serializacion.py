@@ -42,21 +42,13 @@ def segmento_a_dict(seg: SegmentoConTono) -> dict:
             "confianza": seg.stance.confianza,
         },
         "intensidad_antagonica": seg.intensidad_antagonica,
-        "logica_politica": {
-            e.etiqueta: round(e.score, 4)
-            for e in seg.logica_politica.to_scores()
-        },
-        "sentimiento": {
-            e.etiqueta: round(e.score, 4)
-            for e in seg.sentimiento.to_scores()
-        },
+        "logica_politica": {e.etiqueta: round(e.score, 4) for e in seg.logica_politica.to_scores()},
+        "sentimiento": {e.etiqueta: round(e.score, 4) for e in seg.sentimiento.to_scores()},
         "estilo_discursivo": {
-            e.etiqueta: round(e.score, 4)
-            for e in seg.estilo_discursivo.to_scores()
+            e.etiqueta: round(e.score, 4) for e in seg.estilo_discursivo.to_scores()
         },
         "funcion_discursiva": {
-            e.etiqueta: round(e.score, 4)
-            for e in seg.funcion_discursiva.to_scores()
+            e.etiqueta: round(e.score, 4) for e in seg.funcion_discursiva.to_scores()
         },
     }
 
@@ -93,9 +85,7 @@ def generar_json(
     data = {
         "perfil": perfil_a_dict(perfil),
         "provenance": provenance_a_dict(provenance),
-        "segmentos": [
-            segmento_a_dict(seg) for seg in resultado.segmentos
-        ],
+        "segmentos": [segmento_a_dict(seg) for seg in resultado.segmentos],
     }
     return json.dumps(data, indent=2, ensure_ascii=False)
 

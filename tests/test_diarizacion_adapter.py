@@ -20,10 +20,10 @@ FAKE_CREDENTIAL = "HF_TEST_VALUE"
 @dataclass
 class FakeLoadedPipeline:
     name: str
-    to_calls: list[str]
+    to_calls: list[Any]
     call_kwargs: list[dict[str, Any]]
 
-    def to(self, device: str) -> None:
+    def to(self, device: Any) -> None:
         self.to_calls.append(device)
 
     def __call__(self, audio_path: str, **kwargs: Any) -> str:
@@ -56,9 +56,23 @@ class FakeCuda:
         return self._available
 
 
+class FakeDevice:
+    def __init__(self, name: str):
+        self.name = name
+
+    def __repr__(self) -> str:
+        return f"device({self.name})"
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, FakeDevice) and self.name == other.name
+
+
 class FakeTorch:
     def __init__(self, cuda_available: bool):
         self.cuda = FakeCuda(cuda_available)
+
+    def device(self, target: str) -> FakeDevice:
+        return FakeDevice(target)
 
 
 class FakeProgressHook:
@@ -90,7 +104,7 @@ def test_load_primary_pipeline_pasa_token_y_device_auto_cuda():
     assert FakePipelineClass.calls == [
         ("pyannote/speaker-diarization-community-1", FAKE_CREDENTIAL)
     ]
-    assert loaded.pipeline.to_calls == ["cuda"]
+    assert loaded.pipeline.to_calls == [FakeDevice("cuda")]
 
 
 def test_load_fallback_si_primary_falla(caplog):
@@ -115,7 +129,7 @@ def test_load_fallback_si_primary_falla(caplog):
         ("pyannote/speaker-diarization-community-1", FAKE_CREDENTIAL),
         ("pyannote-community/speaker-diarization-community-1", FAKE_CREDENTIAL),
     ]
-    assert loaded.pipeline.to_calls == ["cpu"]
+    assert loaded.pipeline.to_calls == [FakeDevice("cpu")]
     assert "gated primary" in caplog.text
     assert FAKE_CREDENTIAL not in caplog.text
 

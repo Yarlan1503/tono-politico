@@ -36,8 +36,8 @@ def diarizar(
     output = pipeline(str(audio_path))
 
     turnos: list[TurnoOrador] = []
-    for segment, _track, speaker in (
-        output.exclusive_speaker_diarization.itertracks(yield_label=True)
+    for segment, _track, speaker in output.exclusive_speaker_diarization.itertracks(
+        yield_label=True
     ):
         turnos.append(
             TurnoOrador(

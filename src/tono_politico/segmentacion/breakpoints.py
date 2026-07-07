@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     class EmbeddingLike(Protocol):
         def encode(self, texts: list[str]) -> list[list[float]]: ...
 
+
 logger = logging.getLogger(__name__)
 
 
@@ -39,18 +40,12 @@ class Breakpoint:
         self.intensidad = intensidad
 
     def __repr__(self) -> str:
-        return (
-            f"Breakpoint(indice={self.indice}, "
-            f"intensidad={self.intensidad:.3f})"
-        )
+        return f"Breakpoint(indice={self.indice}, intensidad={self.intensidad:.3f})"
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, Breakpoint):
             return NotImplemented
-        return (
-            self.indice == other.indice
-            and abs(self.intensidad - other.intensidad) < 1e-6
-        )
+        return self.indice == other.indice and abs(self.intensidad - other.intensidad) < 1e-6
 
 
 def detectar_breakpoints(

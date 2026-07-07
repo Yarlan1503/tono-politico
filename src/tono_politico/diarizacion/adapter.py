@@ -120,22 +120,28 @@ def _apply_device(pipeline: Any, device: str, torch_module: Any | None) -> None:
     if not hasattr(pipeline, "to"):
         return
 
+    torch_module = torch_module or _import_torch_module()
+    if torch_module is None:
+        return
+
     resolved = _resolve_device(device, torch_module)
     if resolved is None:
         return
     pipeline.to(resolved)
 
 
-def _resolve_device(device: str, torch_module: Any | None) -> str | None:
+def _resolve_device(device: str, torch_module: Any) -> Any | None:
+    """Resuelve el device y devuelve torch.device (no str).
+
+    pyannote 4.x requiere torch.device, no str.
+    """
     if device == "none":
         return None
-    if device != "auto":
-        return device
-
-    torch_module = torch_module or _import_torch_module()
-    if torch_module is not None and torch_module.cuda.is_available():
-        return "cuda"
-    return "cpu"
+    if device == "auto":
+        target = "cuda" if torch_module.cuda.is_available() else "cpu"
+    else:
+        target = device
+    return torch_module.device(target)
 
 
 def _import_torch_module() -> Any | None:
@@ -153,9 +159,7 @@ def _load_error(
     fallback_error: Exception | None,
 ) -> PyannotePipelineLoadError:
     fallback_msg = (
-        f"; fallback '{fallback_pipeline}' falló: {fallback_error}"
-        if fallback_pipeline
-        else ""
+        f"; fallback '{fallback_pipeline}' falló: {fallback_error}" if fallback_pipeline else ""
     )
     return PyannotePipelineLoadError(
         "No se pudo cargar ningún pipeline de diarización pyannote. "

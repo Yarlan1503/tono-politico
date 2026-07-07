@@ -25,38 +25,59 @@ from tono_politico.tono.models import (
 
 def _seg_tono(texto: str = "El pueblo exige justicia.") -> SegmentoConTono:
     seg = Segmento(
-        texto=texto, t_start=0.0, t_end=5.0,
+        texto=texto,
+        t_start=0.0,
+        t_end=5.0,
         oraciones=[Oracion(texto=texto, t_start=0.0, t_end=5.0, words=[])],
-        word_count=4, video_id="v1",
+        word_count=4,
+        video_id="v1",
     )
     return SegmentoConTono(
         segmento=seg,
         stance=ResultadoStance(stance="rechazo", confianza=0.85),
         intensidad_antagonica=4,
         logica_politica=ResultadoLogicaPolitica(
-            nacionalista=0.55, globalista=0.30, populista=0.68,
-            tecnocrata=0.25, corporativista=0.40, estatista=0.50,
+            nacionalista=0.55,
+            globalista=0.30,
+            populista=0.68,
+            tecnocrata=0.25,
+            corporativista=0.40,
+            estatista=0.50,
         ),
         sentimiento=ResultadoSentimiento(
-            esperanza=0.30, angustia=0.65, indignacion=0.55,
-            orgullo=0.35, empatia=0.40,
+            esperanza=0.30,
+            angustia=0.65,
+            indignacion=0.55,
+            orgullo=0.35,
+            empatia=0.40,
         ),
         estilo_discursivo=ResultadoEstiloDiscursivo(
-            directo=0.67, academico=0.35, confrontativo=0.58,
-            conciliador=0.40, catastrofista=0.45, testimonial=0.30,
+            directo=0.67,
+            academico=0.35,
+            confrontativo=0.58,
+            conciliador=0.40,
+            catastrofista=0.45,
+            testimonial=0.30,
         ),
         funcion_discursiva=ResultadoFuncionDiscursiva(
-            critica=0.60, propuesta=0.35, narrativa_personal=0.30,
+            critica=0.60,
+            propuesta=0.35,
+            narrativa_personal=0.30,
         ),
     )
 
 
 def _perfil() -> PerfilActor:
     return PerfilActor(
-        actor="AMLO", tema="fracking", n_segmentos=1,
-        stance_dominante="rechazo", intensidad_promedio=4.0,
-        logica_dominante="populista", sentimiento_dominante="angustia",
-        estilo_dominante="directo", funcion_dominante="critica",
+        actor="AMLO",
+        tema="fracking",
+        n_segmentos=1,
+        stance_dominante="rechazo",
+        intensidad_promedio=4.0,
+        logica_dominante="populista",
+        sentimiento_dominante="angustia",
+        estilo_dominante="directo",
+        funcion_dominante="critica",
     )
 
 
@@ -111,9 +132,7 @@ class TestSegmentoADict:
 class TestGenerarJSON:
     def test_devuelve_json_valido(self):
         seg = _seg_tono()
-        resultado = ResultadoTono(
-            tema="fracking", actor="AMLO", segmentos=[seg]
-        )
+        resultado = ResultadoTono(tema="fracking", actor="AMLO", segmentos=[seg])
         perfil = _perfil()
         prov = _provenance()
 
@@ -129,10 +148,15 @@ class TestGenerarJSON:
     def test_json_vacio_si_no_hay_segmentos(self):
         resultado = ResultadoTono(tema="X", actor="Y")
         perfil = PerfilActor(
-            actor="Y", tema="X", n_segmentos=0,
-            stance_dominante="apoyo", intensidad_promedio=0.0,
-            logica_dominante="populista", sentimiento_dominante="esperanza",
-            estilo_dominante="directo", funcion_dominante="propuesta",
+            actor="Y",
+            tema="X",
+            n_segmentos=0,
+            stance_dominante="apoyo",
+            intensidad_promedio=0.0,
+            logica_dominante="populista",
+            sentimiento_dominante="esperanza",
+            estilo_dominante="directo",
+            funcion_dominante="propuesta",
         )
         json_str = generar_json(resultado, perfil, _provenance())
         data = json.loads(json_str)

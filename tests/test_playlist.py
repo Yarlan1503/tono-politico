@@ -13,6 +13,7 @@ from tono_politico.ingesta.playlist import obtener_info_playlist, sanitizar_nomb
 # Tests: sanitizar_nombre_directorio
 # ──────────────────────────────────────────────────────────
 
+
 class TestSanitizarNombre:
     def test_nombre_simple(self):
         assert sanitizar_nombre_directorio("MiPlaylist") == "MiPlaylist"
@@ -25,7 +26,7 @@ class TestSanitizarNombre:
 
     def test_caracteres_problematicos(self):
         assert sanitizar_nombre_directorio('Play:list<>?"') == "Play_list"
-        assert sanitizar_nombre_directorio('Play:List<>') == "Play_List"
+        assert sanitizar_nombre_directorio("Play:List<>") == "Play_List"
 
     def test_strip_guiones_bajos_extremos(self):
         assert sanitizar_nombre_directorio("___Test___") == "Test"
@@ -40,6 +41,7 @@ class TestSanitizarNombre:
 # ──────────────────────────────────────────────────────────
 # Tests: obtener_info_playlist
 # ──────────────────────────────────────────────────────────
+
 
 class TestObtenerInfoPlaylist:
     def test_parseo_correcto(self, yt_dlp_json_output):
@@ -63,14 +65,16 @@ class TestObtenerInfoPlaylist:
 
     def test_fecha_na_se_convierte_none(self):
         """upload_date='NA' debe convertirse a None."""
-        json_output = json.dumps({
-            "id": "vidX",
-            "title": "Test",
-            "url": "https://www.youtube.com/watch?v=vidX",
-            "duration": 100.0,
-            "upload_date": "NA",
-            "playlist": "MiPlay",
-        })
+        json_output = json.dumps(
+            {
+                "id": "vidX",
+                "title": "Test",
+                "url": "https://www.youtube.com/watch?v=vidX",
+                "duration": 100.0,
+                "upload_date": "NA",
+                "playlist": "MiPlay",
+            }
+        )
         mock_result = MagicMock()
         mock_result.returncode = 0
         mock_result.stdout = json_output
@@ -96,14 +100,16 @@ class TestObtenerInfoPlaylist:
 
     def test_linea_json_malformada_se_ignora(self):
         """Una línea corrupta en el JSON debe loguear warning y continuar."""
-        stdout = "LÍNEA CORRUPTA\n" + json.dumps({
-            "id": "vidOK",
-            "title": "Bueno",
-            "url": "https://www.youtube.com/watch?v=vidOK",
-            "duration": 50.0,
-            "upload_date": "20260601",
-            "playlist": "TestPlay",
-        })
+        stdout = "LÍNEA CORRUPTA\n" + json.dumps(
+            {
+                "id": "vidOK",
+                "title": "Bueno",
+                "url": "https://www.youtube.com/watch?v=vidOK",
+                "duration": 50.0,
+                "upload_date": "20260601",
+                "playlist": "TestPlay",
+            }
+        )
         mock_result = MagicMock()
         mock_result.returncode = 0
         mock_result.stdout = stdout

@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 # Transcripción
 # ──────────────────────────────────────────────────────────
 
+
 def transcribir(
     audio_path: str | Path, modelo: str = "large-v3-turbo", idioma: str = "es"
 ) -> list[SegmentoRaw]:
@@ -118,6 +119,7 @@ def _normalizar_words(words: object) -> list[WordTimestamp]:
 # Persistencia
 # ──────────────────────────────────────────────────────────
 
+
 def verificar_cache_transcripciones(
     nombre_playlist: str,
     videos: list[VideoInfo],
@@ -153,9 +155,7 @@ def verificar_cache_transcripciones(
         else:
             faltantes.append(video)
 
-    logger.info(
-        f"Cache transcripciones: {len(existentes)} existentes, {len(faltantes)} faltantes"
-    )
+    logger.info(f"Cache transcripciones: {len(existentes)} existentes, {len(faltantes)} faltantes")
 
     return {"existentes": existentes, "faltantes": faltantes}
 
@@ -192,9 +192,7 @@ def guardar_transcripcion(
     dir_t = ruta_dir_transcripciones(nombre_playlist, base_dir)
     dir_t.mkdir(parents=True, exist_ok=True)
 
-    ruta_json = ruta_transcripcion(
-        nombre_playlist, transcript.video_id, base_dir
-    )
+    ruta_json = ruta_transcripcion(nombre_playlist, transcript.video_id, base_dir)
 
     ruta_json.write_text(
         json.dumps(_serializar_transcript(transcript), ensure_ascii=False, indent=2),
@@ -236,6 +234,7 @@ def cargar_transcripcion(ruta: Path) -> VideoTranscript:
 # ──────────────────────────────────────────────────────────
 # Serialización interna
 # ──────────────────────────────────────────────────────────
+
 
 def _serializar_transcript(transcript: VideoTranscript) -> dict:
     """Convierte un VideoTranscript a dict JSON-serializable."""

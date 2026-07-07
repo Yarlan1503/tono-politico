@@ -66,9 +66,7 @@ def dimension_dominante(
         ValueError: Si no hay segmentos.
     """
     if not segmentos:
-        raise ValueError(
-            "No se puede calcular dimensión dominante sin segmentos"
-        )
+        raise ValueError("No se puede calcular dimensión dominante sin segmentos")
 
     # Obtener el DTO de la dimensión del primer segmento
     dto = getattr(segmentos[0], dimension)

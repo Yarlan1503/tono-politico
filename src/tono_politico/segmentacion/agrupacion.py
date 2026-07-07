@@ -53,19 +53,16 @@ def agrupar_segmentos(
     bloques = _fusionar_pequenos(bloques, min_oraciones)
 
     # 4. Construir Segmento de cada bloque
-    segmentos: list[Segmento] = [
-        _construir_segmento(bloque, video_id) for bloque in bloques
-    ]
+    segmentos: list[Segmento] = [_construir_segmento(bloque, video_id) for bloque in bloques]
 
-    logger.info(
-        f"Agrupación: {len(oraciones)} oraciones → {len(segmentos)} segmentos"
-    )
+    logger.info(f"Agrupación: {len(oraciones)} oraciones → {len(segmentos)} segmentos")
     return segmentos
 
 
 # ──────────────────────────────────────────────────────────
 # Paso 1: cortar por breakpoints
 # ──────────────────────────────────────────────────────────
+
 
 def _cortar_por_breakpoints(
     oraciones: list[Oracion],
@@ -95,6 +92,7 @@ def _cortar_por_breakpoints(
 # Paso 2: subdividir bloques grandes
 # ──────────────────────────────────────────────────────────
 
+
 def _subdividir(
     bloques: list[list[Oracion]],
     max_oraciones: int,
@@ -107,9 +105,7 @@ def _subdividir(
         if _cumple_limite(bloque, max_oraciones, max_palabras):
             resultado.append(bloque)
         else:
-            resultado.extend(
-                _dividir_bloque(bloque, max_oraciones, max_palabras)
-            )
+            resultado.extend(_dividir_bloque(bloque, max_oraciones, max_palabras))
 
     return resultado
 
@@ -158,6 +154,7 @@ def _dividir_bloque(
 # Paso 3: fusionar bloques muy pequeños
 # ──────────────────────────────────────────────────────────
 
+
 def _fusionar_pequenos(
     bloques: list[list[Oracion]],
     min_oraciones: int,
@@ -180,6 +177,7 @@ def _fusionar_pequenos(
 # ──────────────────────────────────────────────────────────
 # Paso 4: construir Segmento
 # ──────────────────────────────────────────────────────────
+
 
 def _construir_segmento(
     bloque: list[Oracion],

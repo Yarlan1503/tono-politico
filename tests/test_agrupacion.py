@@ -11,6 +11,7 @@ from tono_politico.segmentacion.models import Oracion
 # Helpers
 # ──────────────────────────────────────────────────────────
 
+
 def w(word: str, start: float, end: float) -> WordTimestamp:
     """Crea una WordTimestamp mínima."""
     return WordTimestamp(word=word, start=start, end=end, probability=0.9)
@@ -18,16 +19,14 @@ def w(word: str, start: float, end: float) -> WordTimestamp:
 
 def oracion(texto: str, t_start: float, t_end: float, n_words: int = 3) -> Oracion:
     """Crea una Oracion con words simuladas."""
-    words = [
-        w(f"palabra{i}", t_start + i, t_start + i + 0.5)
-        for i in range(n_words)
-    ]
+    words = [w(f"palabra{i}", t_start + i, t_start + i + 0.5) for i in range(n_words)]
     return Oracion(texto=texto, t_start=t_start, t_end=t_end, words=words)
 
 
 # ──────────────────────────────────────────────────────────
 # Tests: casos edge
 # ──────────────────────────────────────────────────────────
+
 
 class TestCasosEdge:
     def test_input_vacio_devuelve_vacio(self):
@@ -56,6 +55,7 @@ class TestCasosEdge:
 # ──────────────────────────────────────────────────────────
 # Tests: agrupación por breakpoints
 # ──────────────────────────────────────────────────────────
+
 
 class TestAgrupacionPorBreakpoints:
     def test_un_breakpoint_divide_en_dos(self):
@@ -96,6 +96,7 @@ class TestAgrupacionPorBreakpoints:
 # Tests: timestamps y texto
 # ──────────────────────────────────────────────────────────
 
+
 class TestTimestampsYTexto:
     def test_t_start_y_t_end_correctos(self):
         """t_start = primer oración, t_end = última del segmento."""
@@ -133,12 +134,11 @@ class TestTimestampsYTexto:
 # Tests: guardrails
 # ──────────────────────────────────────────────────────────
 
+
 class TestGuardrails:
     def test_max_oraciones_subdivide(self):
         """Si un bloque excede max_oraciones, se subdivide."""
-        oraciones = [
-            oracion(f"S{i}.", float(i), float(i + 1)) for i in range(6)
-        ]
+        oraciones = [oracion(f"S{i}.", float(i), float(i + 1)) for i in range(6)]
         segmentos = agrupar_segmentos(oraciones, [], max_oraciones=3)
 
         for seg in segmentos:
@@ -146,10 +146,7 @@ class TestGuardrails:
 
     def test_max_palabras_subdivide(self):
         """Si un bloque excede max_palabras, se subdivide."""
-        oraciones = [
-            oracion("Larga.", float(i), float(i + 1), n_words=5)
-            for i in range(4)
-        ]
+        oraciones = [oracion("Larga.", float(i), float(i + 1), n_words=5) for i in range(4)]
         segmentos = agrupar_segmentos(oraciones, [], max_palabras=10)
 
         for seg in segmentos:
@@ -177,6 +174,7 @@ class TestGuardrails:
 # ──────────────────────────────────────────────────────────
 # Tests: video_id
 # ──────────────────────────────────────────────────────────
+
 
 class TestVideoId:
     def test_video_id_se_propaga(self):

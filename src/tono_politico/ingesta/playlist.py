@@ -34,15 +34,14 @@ def obtener_info_playlist(url: str) -> PlaylistInfo:
     cmd = [
         "yt-dlp",
         "--flat-playlist",
-        "--extractor-args", "youtubetab:approximate_date",
+        "--extractor-args",
+        "youtubetab:approximate_date",
         "-j",
         "--no-warnings",
         url,
     ]
 
-    resultado = subprocess.run(
-        cmd, capture_output=True, text=True, timeout=120
-    )
+    resultado = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
 
     if resultado.returncode != 0:
         raise RuntimeError(

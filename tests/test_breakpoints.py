@@ -13,6 +13,7 @@ from tono_politico.segmentacion.models import Oracion
 # Fake embedding model
 # ──────────────────────────────────────────────────────────
 
+
 class FakeEmbeddingModel:
     """Modelo que devuelve vectores controlables por test."""
 
@@ -29,6 +30,7 @@ class FakeEmbeddingModel:
 # Helpers
 # ──────────────────────────────────────────────────────────
 
+
 def oracion(texto: str, t_start: float, t_end: float) -> Oracion:
     """Crea una Oracion mínima sin words para tests de breakpoints."""
     return Oracion(texto=texto, t_start=t_start, t_end=t_end, words=[])
@@ -37,6 +39,7 @@ def oracion(texto: str, t_start: float, t_end: float) -> Oracion:
 # ──────────────────────────────────────────────────────────
 # Tests: casos edge
 # ──────────────────────────────────────────────────────────
+
 
 class TestCasosEdge:
     def test_input_vacio_sin_breakpoints(self):
@@ -54,16 +57,19 @@ class TestCasosEdge:
             oracion("Idea A.", 0.0, 2.0),
             oracion("Idea B.", 2.5, 4.0),
         ]
-        model = FakeEmbeddingModel({
-            "Idea A.": [1.0, 0.0],
-            "Idea B.": [0.0, 1.0],
-        })
+        model = FakeEmbeddingModel(
+            {
+                "Idea A.": [1.0, 0.0],
+                "Idea B.": [0.0, 1.0],
+            }
+        )
         assert detectar_breakpoints(oraciones, model) == []
 
 
 # ──────────────────────────────────────────────────────────
 # Tests: semántico (distancia coseno + percentil)
 # ──────────────────────────────────────────────────────────
+
 
 class TestBreakpointSemantico:
     def test_oraciones_similares_no_generan_bp(self):
@@ -73,13 +79,17 @@ class TestBreakpointSemantico:
             oracion("El PIB aumenta.", 2.0, 4.0),
             oracion("Las exportaciones suben.", 4.0, 6.0),
         ]
-        model = FakeEmbeddingModel({
-            "La economía crece.": [1.0, 0.0],
-            "El PIB aumenta.": [0.99, 0.01],
-            "Las exportaciones suben.": [0.98, 0.02],
-        })
+        model = FakeEmbeddingModel(
+            {
+                "La economía crece.": [1.0, 0.0],
+                "El PIB aumenta.": [0.99, 0.01],
+                "Las exportaciones suben.": [0.98, 0.02],
+            }
+        )
         bps = detectar_breakpoints(
-            oraciones, model, breakpoint_percentile=95,
+            oraciones,
+            model,
+            breakpoint_percentile=95,
         )
         assert bps == []
 
@@ -91,14 +101,18 @@ class TestBreakpointSemantico:
             oracion("El fútbol fue intenso.", 4.0, 6.0),
             oracion("El gol fue espectacular.", 6.0, 8.0),
         ]
-        model = FakeEmbeddingModel({
-            "La economía crece.": [1.0, 0.0],
-            "El PIB aumenta.": [0.99, 0.01],
-            "El fútbol fue intenso.": [0.0, 1.0],
-            "El gol fue espectacular.": [0.01, 0.99],
-        })
+        model = FakeEmbeddingModel(
+            {
+                "La economía crece.": [1.0, 0.0],
+                "El PIB aumenta.": [0.99, 0.01],
+                "El fútbol fue intenso.": [0.0, 1.0],
+                "El gol fue espectacular.": [0.01, 0.99],
+            }
+        )
         bps = detectar_breakpoints(
-            oraciones, model, breakpoint_percentile=95,
+            oraciones,
+            model,
+            breakpoint_percentile=95,
         )
         assert len(bps) == 1
         assert bps[0].indice == 2  # cortar antes de "El fútbol..."
@@ -110,13 +124,17 @@ class TestBreakpointSemantico:
             oracion("Tema A2.", 1.0, 2.0),
             oracion("Tema B1.", 2.0, 3.0),
         ]
-        model = FakeEmbeddingModel({
-            "Tema A1.": [1.0, 0.0],
-            "Tema A2.": [1.0, 0.0],
-            "Tema B1.": [0.0, 1.0],
-        })
+        model = FakeEmbeddingModel(
+            {
+                "Tema A1.": [1.0, 0.0],
+                "Tema A2.": [1.0, 0.0],
+                "Tema B1.": [0.0, 1.0],
+            }
+        )
         bps = detectar_breakpoints(
-            oraciones, model, breakpoint_percentile=95,
+            oraciones,
+            model,
+            breakpoint_percentile=95,
         )
         assert len(bps) == 1
         assert abs(bps[0].intensidad - 1.0) < 0.01
@@ -131,16 +149,20 @@ class TestBreakpointSemantico:
             oracion("Salud 1.", 4.0, 5.0),
             oracion("Salud 2.", 5.0, 6.0),
         ]
-        model = FakeEmbeddingModel({
-            "Economía 1.": [1.0, 0.0, 0.0],
-            "Economía 2.": [0.99, 0.01, 0.0],
-            "Deporte 1.": [0.0, 1.0, 0.0],
-            "Deporte 2.": [0.0, 0.99, 0.01],
-            "Salud 1.": [0.0, 0.0, 1.0],
-            "Salud 2.": [0.01, 0.0, 0.99],
-        })
+        model = FakeEmbeddingModel(
+            {
+                "Economía 1.": [1.0, 0.0, 0.0],
+                "Economía 2.": [0.99, 0.01, 0.0],
+                "Deporte 1.": [0.0, 1.0, 0.0],
+                "Deporte 2.": [0.0, 0.99, 0.01],
+                "Salud 1.": [0.0, 0.0, 1.0],
+                "Salud 2.": [0.01, 0.0, 0.99],
+            }
+        )
         bps = detectar_breakpoints(
-            oraciones, model, breakpoint_percentile=95,
+            oraciones,
+            model,
+            breakpoint_percentile=95,
         )
         indices = [bp.indice for bp in bps]
         assert 2 in indices  # Economía → Deporte
@@ -151,25 +173,29 @@ class TestBreakpointSemantico:
 # Tests: configurabilidad
 # ──────────────────────────────────────────────────────────
 
+
 class TestConfigurabilidad:
     def test_percentil_mas_bajo_genera_mas_breakpoints(self):
         """Un percentil más bajo baja el umbral → más breakpoints."""
-        oraciones = [
-            oracion(f"Frase {i}.", float(i), float(i + 1))
-            for i in range(6)
-        ]
-        model = FakeEmbeddingModel({
-            "Frase 0.": [1.0, 0.0],
-            "Frase 1.": [0.9, 0.1],
-            "Frase 2.": [0.7, 0.3],
-            "Frase 3.": [0.5, 0.5],
-            "Frase 4.": [0.3, 0.7],
-            "Frase 5.": [0.1, 0.9],
-        })
+        oraciones = [oracion(f"Frase {i}.", float(i), float(i + 1)) for i in range(6)]
+        model = FakeEmbeddingModel(
+            {
+                "Frase 0.": [1.0, 0.0],
+                "Frase 1.": [0.9, 0.1],
+                "Frase 2.": [0.7, 0.3],
+                "Frase 3.": [0.5, 0.5],
+                "Frase 4.": [0.3, 0.7],
+                "Frase 5.": [0.1, 0.9],
+            }
+        )
         bps_alto = detectar_breakpoints(
-            oraciones, model, breakpoint_percentile=95,
+            oraciones,
+            model,
+            breakpoint_percentile=95,
         )
         bps_bajo = detectar_breakpoints(
-            oraciones, model, breakpoint_percentile=50,
+            oraciones,
+            model,
+            breakpoint_percentile=50,
         )
         assert len(bps_bajo) >= len(bps_alto)

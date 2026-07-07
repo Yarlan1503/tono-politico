@@ -29,10 +29,7 @@ def segmento(texto: str, video_id: str = "vid001") -> Segmento:
 
 
 def resultado_filtrado(textos: list[str]) -> ResultadoFiltrado:
-    segs = [
-        SegmentoFiltrado(segmento=segmento(t), topico_id=0, relevancia=0.8)
-        for t in textos
-    ]
+    segs = [SegmentoFiltrado(segmento=segmento(t), topico_id=0, relevancia=0.8) for t in textos]
     return ResultadoFiltrado(
         criterio=CriterioFiltrado(topico_id=0),
         topico=None,
@@ -94,20 +91,46 @@ class TestMapearScores:
 
     def test_intensidad_devuelve_nivel_maximo(self):
         scores = {
-            "logica_politica": {k: 0.1 for k in [
-                "nacionalista", "globalista", "populista",
-                "tecnocrata", "corporativista", "estatista",
-            ]},
-            "sentimiento": {k: 0.1 for k in [
-                "esperanza", "angustia", "indignacion", "orgullo", "empatia",
-            ]},
-            "estilo_discursivo": {k: 0.1 for k in [
-                "directo", "academico", "confrontativo",
-                "conciliador", "catastrofista", "testimonial",
-            ]},
-            "funcion_discursiva": {k: 0.1 for k in [
-                "critica", "propuesta", "narrativa_personal",
-            ]},
+            "logica_politica": {
+                k: 0.1
+                for k in [
+                    "nacionalista",
+                    "globalista",
+                    "populista",
+                    "tecnocrata",
+                    "corporativista",
+                    "estatista",
+                ]
+            },
+            "sentimiento": {
+                k: 0.1
+                for k in [
+                    "esperanza",
+                    "angustia",
+                    "indignacion",
+                    "orgullo",
+                    "empatia",
+                ]
+            },
+            "estilo_discursivo": {
+                k: 0.1
+                for k in [
+                    "directo",
+                    "academico",
+                    "confrontativo",
+                    "conciliador",
+                    "catastrofista",
+                    "testimonial",
+                ]
+            },
+            "funcion_discursiva": {
+                k: 0.1
+                for k in [
+                    "critica",
+                    "propuesta",
+                    "narrativa_personal",
+                ]
+            },
             "intensidad": {"1": 0.3, "2": 0.4, "3": 0.5, "4": 0.8, "5": 0.6},
         }
         _, _, _, _, intensidad = mapear_scores(scores)
@@ -116,20 +139,46 @@ class TestMapearScores:
     def test_intensidad_empate_devuelve_menor(self):
         """En caso de empate, devuelve el nivel menor (más conservador)."""
         scores = {
-            "logica_politica": {k: 0.1 for k in [
-                "nacionalista", "globalista", "populista",
-                "tecnocrata", "corporativista", "estatista",
-            ]},
-            "sentimiento": {k: 0.1 for k in [
-                "esperanza", "angustia", "indignacion", "orgullo", "empatia",
-            ]},
-            "estilo_discursivo": {k: 0.1 for k in [
-                "directo", "academico", "confrontativo",
-                "conciliador", "catastrofista", "testimonial",
-            ]},
-            "funcion_discursiva": {k: 0.1 for k in [
-                "critica", "propuesta", "narrativa_personal",
-            ]},
+            "logica_politica": {
+                k: 0.1
+                for k in [
+                    "nacionalista",
+                    "globalista",
+                    "populista",
+                    "tecnocrata",
+                    "corporativista",
+                    "estatista",
+                ]
+            },
+            "sentimiento": {
+                k: 0.1
+                for k in [
+                    "esperanza",
+                    "angustia",
+                    "indignacion",
+                    "orgullo",
+                    "empatia",
+                ]
+            },
+            "estilo_discursivo": {
+                k: 0.1
+                for k in [
+                    "directo",
+                    "academico",
+                    "confrontativo",
+                    "conciliador",
+                    "catastrofista",
+                    "testimonial",
+                ]
+            },
+            "funcion_discursiva": {
+                k: 0.1
+                for k in [
+                    "critica",
+                    "propuesta",
+                    "narrativa_personal",
+                ]
+            },
             "intensidad": {"1": 0.5, "2": 0.5, "3": 0.5, "4": 0.5, "5": 0.5},
         }
         _, _, _, _, intensidad = mapear_scores(scores)
@@ -170,10 +219,12 @@ class TestTonoServiceIntegracion:
 
     def test_procesa_un_segmento_completo(self):
         svc = TonoService(actor="AMLO", tema="fracking")
-        rf = resultado_filtrado([
-            "No vamos a permitir el fracking porque daña la naturaleza "
-            "y contamina los mantos acuíferos."
-        ])
+        rf = resultado_filtrado(
+            [
+                "No vamos a permitir el fracking porque daña la naturaleza "
+                "y contamina los mantos acuíferos."
+            ]
+        )
         resultado = svc.procesar(rf)
 
         assert resultado.tema == "fracking"

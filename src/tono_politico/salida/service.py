@@ -68,8 +68,7 @@ class SalidaService:
             self._escribir(resultado, perfil, provenance)
 
         logger.info(
-            f"Informe generado: {perfil.actor} / {perfil.tema} "
-            f"({perfil.n_segmentos} segmentos)"
+            f"Informe generado: {perfil.actor} / {perfil.tema} ({perfil.n_segmentos} segmentos)"
         )
 
         return informe
@@ -107,10 +106,6 @@ class SalidaService:
             json_path = self.output_path / "informe.json"
             md_path = self.output_path / "informe.md"
 
-            json_path.write_text(
-                generar_json(resultado, perfil, provenance), encoding="utf-8"
-            )
-            md_path.write_text(
-                generar_markdown(resultado, perfil, provenance), encoding="utf-8"
-            )
+            json_path.write_text(generar_json(resultado, perfil, provenance), encoding="utf-8")
+            md_path.write_text(generar_markdown(resultado, perfil, provenance), encoding="utf-8")
             logger.info(f"Archivos escritos: {json_path}, {md_path}")

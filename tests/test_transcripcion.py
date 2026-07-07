@@ -19,6 +19,7 @@ from tono_politico.models import SegmentoRaw, WordTimestamp
 # Fakes de Whisper (solo para test_transcribir)
 # ──────────────────────────────────────────────────────────
 
+
 class FakeWhisperModel:
     def __init__(self, resultado):
         self.resultado = resultado
@@ -43,6 +44,7 @@ class FakeWhisperModule:
 # Tests: verificar_cache_transcripciones
 # ──────────────────────────────────────────────────────────
 
+
 class TestVerificarCacheTranscripciones:
     def test_carpeta_inexistente_todo_faltante(self, playlist_mock, tmp_path):
         estado = verificar_cache_transcripciones(
@@ -53,9 +55,7 @@ class TestVerificarCacheTranscripciones:
         assert len(estado["faltantes"]) == 3
 
     def test_carpeta_vacia_todo_faltante(self, playlist_mock, tmp_path):
-        dir_t = tmp_path / playlist_mock.nombre / (
-            f"transcripciones-{playlist_mock.nombre}"
-        )
+        dir_t = tmp_path / playlist_mock.nombre / (f"transcripciones-{playlist_mock.nombre}")
         dir_t.mkdir(parents=True)
 
         estado = verificar_cache_transcripciones(
@@ -66,9 +66,7 @@ class TestVerificarCacheTranscripciones:
         assert len(estado["faltantes"]) == 3
 
     def test_cache_parcial_detecta_faltantes(self, playlist_mock, tmp_path):
-        dir_t = tmp_path / playlist_mock.nombre / (
-            f"transcripciones-{playlist_mock.nombre}"
-        )
+        dir_t = tmp_path / playlist_mock.nombre / (f"transcripciones-{playlist_mock.nombre}")
         dir_t.mkdir(parents=True)
         (dir_t / "vid001.json").write_text(
             json.dumps({"video_id": "vid001", "raw_segments": []}),
@@ -84,9 +82,7 @@ class TestVerificarCacheTranscripciones:
         assert {v.id for v in estado["faltantes"]} == {"vid002", "vid003"}
 
     def test_todos_los_jsons_validos_nada_faltante(self, playlist_mock, tmp_path):
-        dir_t = tmp_path / playlist_mock.nombre / (
-            f"transcripciones-{playlist_mock.nombre}"
-        )
+        dir_t = tmp_path / playlist_mock.nombre / (f"transcripciones-{playlist_mock.nombre}")
         dir_t.mkdir(parents=True)
         for video in playlist_mock.videos:
             (dir_t / f"{video.id}.json").write_text(
@@ -102,9 +98,7 @@ class TestVerificarCacheTranscripciones:
         assert len(estado["faltantes"]) == 0
 
     def test_json_corrupto_cuenta_como_faltante(self, playlist_mock, tmp_path):
-        dir_t = tmp_path / playlist_mock.nombre / (
-            f"transcripciones-{playlist_mock.nombre}"
-        )
+        dir_t = tmp_path / playlist_mock.nombre / (f"transcripciones-{playlist_mock.nombre}")
         dir_t.mkdir(parents=True)
         (dir_t / "vid001.json").write_text("{json roto", encoding="utf-8")
 
@@ -114,15 +108,13 @@ class TestVerificarCacheTranscripciones:
 
         assert len(estado["existentes"]) == 0
         assert {v.id for v in estado["faltantes"]} == {
-            "vid001", "vid002", "vid003",
+            "vid001",
+            "vid002",
+            "vid003",
         }
 
-    def test_json_con_video_id_distinto_cuenta_como_faltante(
-        self, playlist_mock, tmp_path
-    ):
-        dir_t = tmp_path / playlist_mock.nombre / (
-            f"transcripciones-{playlist_mock.nombre}"
-        )
+    def test_json_con_video_id_distinto_cuenta_como_faltante(self, playlist_mock, tmp_path):
+        dir_t = tmp_path / playlist_mock.nombre / (f"transcripciones-{playlist_mock.nombre}")
         dir_t.mkdir(parents=True)
         (dir_t / "vid001.json").write_text(
             json.dumps({"video_id": "otro_id", "raw_segments": []}),
@@ -135,7 +127,9 @@ class TestVerificarCacheTranscripciones:
 
         assert len(estado["existentes"]) == 0
         assert {v.id for v in estado["faltantes"]} == {
-            "vid001", "vid002", "vid003",
+            "vid001",
+            "vid002",
+            "vid003",
         }
 
 
@@ -143,10 +137,9 @@ class TestVerificarCacheTranscripciones:
 # Tests: transcribir
 # ──────────────────────────────────────────────────────────
 
+
 class TestTranscribir:
-    def test_transcribe_audio_con_whisper_y_normaliza_segmentos(
-        self, tmp_path, monkeypatch
-    ):
+    def test_transcribe_audio_con_whisper_y_normaliza_segmentos(self, tmp_path, monkeypatch):
         """transcribir debe cargar Whisper, llamar transcribe y normalizar."""
         audio_path = tmp_path / "audio.wav"
         audio_path.write_bytes(b"fake audio")
@@ -265,27 +258,22 @@ class TestTranscribir:
 # Tests: guardar_transcripcion
 # ──────────────────────────────────────────────────────────
 
+
 class TestGuardarTranscripcion:
     def test_guarda_json_y_devuelve_ruta(self, transcript_mock, tmp_path):
-        ruta = guardar_transcripcion(
-            transcript_mock, "TestPlaylist", base_dir=tmp_path
-        )
+        ruta = guardar_transcripcion(transcript_mock, "TestPlaylist", base_dir=tmp_path)
 
         assert ruta.exists()
         assert ruta.name == "vid001.json"
         assert "transcripciones-TestPlaylist" in str(ruta)
 
     def test_crea_directorio_si_no_existe(self, transcript_mock, tmp_path):
-        ruta = guardar_transcripcion(
-            transcript_mock, "TestPlaylist", base_dir=tmp_path
-        )
+        ruta = guardar_transcripcion(transcript_mock, "TestPlaylist", base_dir=tmp_path)
 
         assert ruta.parent.exists()
 
     def test_json_contiene_video_id_y_segments(self, transcript_mock, tmp_path):
-        ruta = guardar_transcripcion(
-            transcript_mock, "TestPlaylist", base_dir=tmp_path
-        )
+        ruta = guardar_transcripcion(transcript_mock, "TestPlaylist", base_dir=tmp_path)
 
         data = json.loads(ruta.read_text(encoding="utf-8"))
         assert data["video_id"] == "vid001"
@@ -300,9 +288,7 @@ class TestGuardarTranscripcion:
 
     def test_sobrescribe_si_ya_existe(self, transcript_mock, tmp_path):
         guardar_transcripcion(transcript_mock, "TestPlaylist", base_dir=tmp_path)
-        ruta = guardar_transcripcion(
-            transcript_mock, "TestPlaylist", base_dir=tmp_path
-        )
+        ruta = guardar_transcripcion(transcript_mock, "TestPlaylist", base_dir=tmp_path)
 
         assert ruta.exists()
         data = json.loads(ruta.read_text(encoding="utf-8"))
@@ -313,11 +299,10 @@ class TestGuardarTranscripcion:
 # Tests: cargar_transcripcion
 # ──────────────────────────────────────────────────────────
 
+
 class TestCargarTranscripcion:
     def test_roundtrip_guardar_cargar_igualdad(self, transcript_mock, tmp_path):
-        ruta = guardar_transcripcion(
-            transcript_mock, "TestPlaylist", base_dir=tmp_path
-        )
+        ruta = guardar_transcripcion(transcript_mock, "TestPlaylist", base_dir=tmp_path)
         cargado = cargar_transcripcion(ruta)
 
         assert cargado == transcript_mock

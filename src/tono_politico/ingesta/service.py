@@ -69,9 +69,7 @@ class IngestaService:
             return []
 
         # 2. Cache de transcripciones
-        estado_t = verificar_cache_transcripciones(
-            info.nombre, info.videos, self.data_dir
-        )
+        estado_t = verificar_cache_transcripciones(info.nombre, info.videos, self.data_dir)
         faltantes = estado_t["faltantes"]
 
         logger.info(
@@ -92,38 +90,27 @@ class IngestaService:
         logger.info(f"Procesamiento completo: {len(resultados)} transcripciones")
         return resultados
 
-    def _procesar_faltantes(
-        self, nombre_playlist: str, faltantes: list
-    ) -> None:
+    def _procesar_faltantes(self, nombre_playlist: str, faltantes: list) -> None:
         """Descarga audios faltantes, transcribe y guarda en cache."""
         # Cache de audios
-        estado_audios = verificar_cache_videos(
-            nombre_playlist, faltantes, self.data_dir
-        )
+        estado_audios = verificar_cache_videos(nombre_playlist, faltantes, self.data_dir)
         audios_en_cache = estado_audios["existentes"]
         audios_faltantes = estado_audios["faltantes"]
 
         logger.info(
-            f"Audios: {len(audios_en_cache)} en cache, "
-            f"{len(audios_faltantes)} por descargar"
+            f"Audios: {len(audios_en_cache)} en cache, {len(audios_faltantes)} por descargar"
         )
 
         # Mapear rutas de audio (cache + recién descargados)
         rutas_audio: dict[str, Path] = {}
         for video in audios_en_cache:
-            rutas_audio[video.id] = ruta_audio(
-                nombre_playlist, video.id, self.data_dir
-            )
+            rutas_audio[video.id] = ruta_audio(nombre_playlist, video.id, self.data_dir)
         for video in audios_faltantes:
-            ruta = descargar_audio(
-                video, nombre_playlist, self.data_dir
-            )
+            ruta = descargar_audio(video, nombre_playlist, self.data_dir)
             if ruta is not None:
                 rutas_audio[video.id] = ruta
             else:
-                logger.warning(
-                    f"Video {video.id} sin audio, se omitirá en transcripción"
-                )
+                logger.warning(f"Video {video.id} sin audio, se omitirá en transcripción")
 
         # Transcribir y guardar (solo videos con audio exitoso)
         for video in faltantes:
@@ -141,6 +128,4 @@ class IngestaService:
                 fecha=video.fecha,
                 raw_segments=segmentos,
             )
-            guardar_transcripcion(
-                transcript, nombre_playlist, self.data_dir
-            )
+            guardar_transcripcion(transcript, nombre_playlist, self.data_dir)
