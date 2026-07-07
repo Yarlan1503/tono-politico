@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from tono_politico.config import Config, ProjectConfig
 from tono_politico.filtrado.models import CriterioFiltrado, ResultadoFiltrado
 from tono_politico.models import PlaylistInfo, SegmentoRaw, VideoTranscript
 from tono_politico.pipeline.runner import PipelineRunner, ServiceFactories
@@ -115,11 +116,8 @@ def _factories(
     )
 
 
-def _cfg(tmp_path: Path) -> dict[str, Any]:
-    return {
-        "project": {"data_dir": str(tmp_path)},
-        "diarizacion": {"actor_objetivo": "Lilly Téllez"},
-    }
+def _cfg(tmp_path: Path) -> Config:
+    return Config(project=ProjectConfig(data_dir=tmp_path))
 
 
 class TestPipelineRunnerDiscover:

@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from tono_politico.config import Config
 from tono_politico.models import PlaylistInfo, VideoTranscript
 from tono_politico.temas.models import ResultadoTemas
 
@@ -26,13 +27,13 @@ logger = logging.getLogger(__name__)
 class ServiceFactories:
     """Factories inyectables para construir los services del pipeline."""
 
-    build_ingesta: Callable[[dict[str, Any]], Any]
-    build_diarizacion: Callable[[dict[str, Any]], Any]
-    build_segmentacion: Callable[[dict[str, Any]], Any]
-    build_temas: Callable[[dict[str, Any]], Any]
-    build_filtrado: Callable[[dict[str, Any], int], Any]
-    build_tono: Callable[[dict[str, Any], str, str], Any]
-    build_salida: Callable[[dict[str, Any], str | None], Any]
+    build_ingesta: Callable[[Config], Any]
+    build_diarizacion: Callable[[Config], Any]
+    build_segmentacion: Callable[[Config], Any]
+    build_temas: Callable[[Config], Any]
+    build_filtrado: Callable[[Config, int], Any]
+    build_tono: Callable[[Config, str, str], Any]
+    build_salida: Callable[[Config, str | None], Any]
     get_playlist_info: Callable[[str], PlaylistInfo]
 
 
@@ -48,7 +49,7 @@ class Fase1Resultado:
 class PipelineRunner:
     """Orquesta el pipeline sin depender de argparse ni sys.exit."""
 
-    cfg: dict[str, Any]
+    cfg: Config
     factories: ServiceFactories
     keep_cache: bool = False
     last_resultado_temas: ResultadoTemas | None = field(default=None, init=False)
@@ -88,7 +89,7 @@ class PipelineRunner:
             self._limpiar_cache(manifest.playlist_name)
             return RunResult(manifest=manifest, exit_code=1)
 
-        actor = self.cfg.get("diarizacion", {}).get("actor_objetivo", "Lilly Téllez")
+        actor = self.cfg.diarizacion.actor_objetivo
         svc_tono = self.factories.build_tono(self.cfg, actor, tema)
         resultado_tono = self._run_phase(
             manifest,
@@ -171,8 +172,7 @@ class PipelineRunner:
         return result
 
     def _cache_dir(self, playlist_name: str) -> Path:
-        data_dir = Path(self.cfg.get("project", {}).get("data_dir", "data"))
-        return data_dir / playlist_name
+        return self.cfg.project.data_dir / playlist_name
 
     def _limpiar_cache(self, playlist_name: str) -> None:
         playlist_dir = self._cache_dir(playlist_name)

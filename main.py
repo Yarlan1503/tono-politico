@@ -11,10 +11,8 @@ import argparse
 import logging
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any
 
-import yaml
-
+from tono_politico.config import Config, load_config
 from tono_politico.diarizacion import DiarizacionService
 from tono_politico.filtrado import FiltradoService
 from tono_politico.ingesta import IngestaService
@@ -34,15 +32,9 @@ CONFIG_PATH = Path("config/config.yaml")
 # ──────────────────────────────────────────────────────────
 
 
-def cargar_config(path: Path = CONFIG_PATH) -> dict[str, Any]:
-    """Carga config/config.yaml y devuelve el diccionario."""
-    if not path.exists():
-        raise FileNotFoundError(f"Config no encontrado: {path}")
-    with open(path, encoding="utf-8") as f:
-        cfg = yaml.safe_load(f) or {}
-    if not isinstance(cfg, dict):
-        raise ValueError(f"Config debe ser un mapping YAML: {path}")
-    return cfg
+def cargar_config(path: Path = CONFIG_PATH) -> Config:
+    """Carga config/config.yaml y devuelve config tipada."""
+    return load_config(path)
 
 
 # ──────────────────────────────────────────────────────────
@@ -50,70 +42,61 @@ def cargar_config(path: Path = CONFIG_PATH) -> dict[str, Any]:
 # ──────────────────────────────────────────────────────────
 
 
-def _build_ingesta(cfg: dict[str, Any]) -> IngestaService:
-    c = cfg.get("ingesta", {})
+def _build_ingesta(cfg: Config) -> IngestaService:
     return IngestaService(
-        data_dir=Path(c.get("data_dir", "data")),
-        whisper_model=c.get("whisper_model", "large-v3-turbo"),
-        idioma=c.get("idioma", "es"),
+        data_dir=cfg.project.data_dir,
+        whisper_model=cfg.ingesta.whisper_model,
+        idioma=cfg.ingesta.idioma,
     )
 
 
-def _build_diarizacion(cfg: dict[str, Any]) -> DiarizacionService:
-    c = cfg.get("diarizacion", {})
-    ref = c.get("referencia_voz", {})
+def _build_diarizacion(cfg: Config) -> DiarizacionService:
     return DiarizacionService(
-        actor=c.get("actor_objetivo", "Lilly Téllez"),
-        video_ref_id=ref.get("video_id", "su9nURIj9XQ"),
-        data_dir=Path(cfg.get("project", {}).get("data_dir", "data")),
-        pipeline_name=c.get("pipeline", "pyannote-community/speaker-diarization-community-1"),
-        umbral_match=c.get("umbral_match", 0.5),
-        umbral_ambiguo=c.get("umbral_ambiguo", 0.7),
+        actor=cfg.diarizacion.actor_objetivo,
+        video_ref_id=cfg.diarizacion.video_ref_id,
+        data_dir=cfg.project.data_dir,
+        pipeline_name=cfg.diarizacion.pipeline,
+        umbral_match=cfg.diarizacion.umbral_match,
+        umbral_ambiguo=cfg.diarizacion.umbral_ambiguo,
     )
 
 
-def _build_segmentacion(cfg: dict[str, Any]) -> SegmentacionService:
-    c = cfg.get("segmentacion", {})
+def _build_segmentacion(cfg: Config) -> SegmentacionService:
     return SegmentacionService(
-        spacy_model=c.get("spacy_model", "es_core_news_lg"),
-        breakpoint_percentile=c.get("breakpoint_percentile", 95),
-        min_oraciones=c.get("min_oraciones", 2),
-        max_oraciones=c.get("max_oraciones", 8),
-        max_palabras=c.get("max_palabras", 150),
+        spacy_model=cfg.segmentacion.spacy_model,
+        breakpoint_percentile=cfg.segmentacion.breakpoint_percentile,
+        min_oraciones=cfg.segmentacion.min_oraciones,
+        max_oraciones=cfg.segmentacion.max_oraciones,
+        max_palabras=cfg.segmentacion.max_palabras,
     )
 
 
-def _build_temas(cfg: dict[str, Any]) -> TemasService:
-    c = cfg.get("temas", {})
+def _build_temas(cfg: Config) -> TemasService:
     return TemasService(
-        min_topic_size=c.get("min_topic_size", 3),
-        n_neighbors=c.get("n_neighbors", 10),
-        n_components=c.get("n_components", 5),
-        embedding_model_name=c.get("embedding_model", "LiquidAI/LFM2.5-Embedding-350M"),
+        min_topic_size=cfg.temas.min_topic_size,
+        n_neighbors=cfg.temas.n_neighbors,
+        n_components=cfg.temas.n_components,
+        embedding_model_name=cfg.temas.embedding_model,
     )
 
 
-def _build_filtrado(cfg: dict[str, Any], topico_id: int) -> FiltradoService:
-    c = cfg.get("filtrado", {})
+def _build_filtrado(cfg: Config, topico_id: int) -> FiltradoService:
     return FiltradoService(
         topico_id=topico_id,
-        min_relevancia=c.get("min_relevancia", 0.35),
-        incluir_outliers=c.get("incluir_outliers", False),
+        min_relevancia=cfg.filtrado.min_relevancia,
+        incluir_outliers=cfg.filtrado.incluir_outliers,
     )
 
 
-def _build_tono(cfg: dict[str, Any], actor: str, tema: str) -> TonoService:
+def _build_tono(cfg: Config, actor: str, tema: str) -> TonoService:
     return TonoService(actor=actor, tema=tema)
 
 
-def _build_salida(cfg: dict[str, Any], output_path: str | None) -> SalidaService:
-    c = cfg.get("salida", {})
-    fmt = c.get("formatos", ["json", "markdown"])
-
+def _build_salida(cfg: Config, output_path: str | None) -> SalidaService:
     if output_path:
         return SalidaService(output_path=output_path)
-    if "json" in fmt and "markdown" in fmt:
-        return SalidaService(output_path=Path("output"))
+    if "json" in cfg.salida.formatos and "markdown" in cfg.salida.formatos:
+        return SalidaService(output_path=cfg.project.output_dir)
     return SalidaService(output_path=None)
 
 

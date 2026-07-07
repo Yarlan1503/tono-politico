@@ -22,8 +22,8 @@ Estado actual: **ya existe `main.py`** que lee automáticamente `config/config.y
 
 | Sección YAML | Service / módulo | Estado | Notas |
 |---|---|---:|---|
-| `project` | defaults globales | referencia | `data_dir`, `idioma`, `random_state`. |
-| `ingesta` | `IngestaService` | ✅ | `data_dir`, `whisper_model`, `idioma`. |
+| `project` | defaults globales | referencia | `data_dir`, `output_dir`, `idioma`, `random_state`. |
+| `ingesta` | `IngestaService` | ✅ | Usa `project.data_dir`; configura `whisper_model`, `idioma`. |
 | `diarizacion` | `DiarizacionService` | ✅ | pyannote community-1, perfil de voz temporal, política de ambigüedad y salida actor-only. |
 | `segmentacion` | `SegmentacionService` | ✅ | spaCy, percentil de breakpoints y guardrails. |
 | `temas` | `TemasService` + `descubrir_temas()` | ✅ MVP | BERTopic, UMAP, HDBSCAN y modelo de embeddings. |
@@ -34,8 +34,11 @@ Estado actual: **ya existe `main.py`** que lee automáticamente `config/config.y
 ## Componente 1: `ingesta`
 
 ```yaml
-ingesta:
+project:
   data_dir: "data"
+  output_dir: "output"
+
+ingesta:
   whisper_model: "large-v3-turbo"
   idioma: "es"
 ```

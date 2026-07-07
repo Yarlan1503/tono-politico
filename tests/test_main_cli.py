@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from tono_politico.config import Config
 from tono_politico.pipeline.models import RunManifest, RunResult
 
 
@@ -84,6 +85,7 @@ def test_main_discover_retorna_exit_code_del_runner(monkeypatch, tmp_path: Path)
     assert exit_code == 0
     assert len(FakeRunner.instances) == 1
     runner = FakeRunner.instances[0]
+    assert isinstance(runner.cfg, Config)
     assert runner.keep_cache is True
     assert runner.discover_calls == ["playlist-url"]
     assert runner.analyze_calls == []
@@ -112,5 +114,6 @@ def test_main_analyze_retorna_exit_code_del_runner(monkeypatch, tmp_path: Path):
     assert exit_code == 0
     assert len(FakeRunner.instances) == 1
     runner = FakeRunner.instances[0]
+    assert isinstance(runner.cfg, Config)
     assert runner.discover_calls == []
     assert runner.analyze_calls == [("playlist-url", 0, "seguridad", "output/test")]

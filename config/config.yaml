@@ -10,8 +10,8 @@ project:
   random_state: 42
 
 # Componente 1: Ingesta — YouTube playlist → Whisper → VideoTranscript[]
+# Usa project.data_dir como directorio único de datos runtime.
 ingesta:
-  data_dir: "data"
   whisper_model: "large-v3-turbo"
   idioma: "es"
 
