@@ -12,6 +12,7 @@ from tono_politico.temas.service import TemasService
 # Helpers
 # ──────────────────────────────────────────────────────────
 
+
 def segmento(texto: str, video_id: str = "vid001") -> Segmento:
     """Crea un Segmento mínimo."""
     return Segmento(
@@ -42,6 +43,7 @@ def segmentos_ejemplo() -> list[Segmento]:
 # Tests: DTOs
 # ──────────────────────────────────────────────────────────
 
+
 class TestDTOs:
     def test_segmento_tematizado(self):
         st = SegmentoTematizado(
@@ -68,6 +70,7 @@ class TestDTOs:
 # ──────────────────────────────────────────────────────────
 # Tests: TemasService init
 # ──────────────────────────────────────────────────────────
+
 
 class TestTemasServiceInit:
     def test_init_guarda_config(self):
@@ -98,6 +101,7 @@ class TestTemasServiceInit:
 # Tests: procesar (con BERTopic mockeado)
 # ──────────────────────────────────────────────────────────
 
+
 class TestProcesar:
     def test_input_vacio_devuelve_vacio(self):
         """Sin segmentos devuelve ResultadoTemas vacío."""
@@ -106,17 +110,17 @@ class TestProcesar:
         assert resultado.num_topicos == 0
         assert resultado.segmentos == []
 
-    def test_pocos_segmentos_todo_outlier(self):
-        """Menos segmentos que min_topic_size → todos outlier (-1)."""
+    def test_pocos_segmentos_topico_unico_controlado(self):
+        """Menos segmentos que min_topic_size → tópico único controlado (id=0)."""
         svc = TemasService(min_topic_size=10)
         segs = [segmento("Uno."), segmento("Dos.")]
 
         with patch.object(svc, "_get_embedder"):
             resultado = svc.procesar(segs)
 
-        assert resultado.num_topicos == 0
+        assert resultado.num_topicos == 1
         assert len(resultado.segmentos) == 2
-        assert all(s.topico_id == -1 for s in resultado.segmentos)
+        assert all(s.topico_id == 0 for s in resultado.segmentos)
 
     def test_descubre_dos_topicos(self):
         """6 segmentos (2 grupos) → BERTopic encuentra 2 tópicos."""
@@ -126,12 +130,9 @@ class TestProcesar:
         # Mock del resultado de descubrir_temas
         resultado_mock = ResultadoTemas(
             segmentos=[
-                SegmentoTematizado(segmento=s, topico_id=0, probabilidad=0.9)
-                for s in segs[:3]
-            ] + [
-                SegmentoTematizado(segmento=s, topico_id=1, probabilidad=0.85)
-                for s in segs[3:]
-            ],
+                SegmentoTematizado(segmento=s, topico_id=0, probabilidad=0.9) for s in segs[:3]
+            ]
+            + [SegmentoTematizado(segmento=s, topico_id=1, probabilidad=0.85) for s in segs[3:]],
             topicos=[
                 TopicoInfo(
                     id=0,
@@ -151,11 +152,13 @@ class TestProcesar:
             num_topicos=2,
         )
 
-        with patch.object(svc, "_get_embedder"), \
-             patch(
-                 "tono_politico.temas.service.descubrir_temas",
-                 return_value=resultado_mock,
-             ):
+        with (
+            patch.object(svc, "_get_embedder"),
+            patch(
+                "tono_politico.temas.service.descubrir_temas",
+                return_value=resultado_mock,
+            ),
+        ):
             resultado = svc.procesar(segs)
 
         assert resultado.num_topicos == 2
@@ -189,12 +192,9 @@ class TestProcesar:
 
         resultado_mock = ResultadoTemas(
             segmentos=[
-                SegmentoTematizado(segmento=s, topico_id=0, probabilidad=0.9)
-                for s in segs[:3]
-            ] + [
-                SegmentoTematizado(segmento=s, topico_id=1, probabilidad=0.85)
-                for s in segs[3:]
-            ],
+                SegmentoTematizado(segmento=s, topico_id=0, probabilidad=0.9) for s in segs[:3]
+            ]
+            + [SegmentoTematizado(segmento=s, topico_id=1, probabilidad=0.85) for s in segs[3:]],
             topicos=[
                 TopicoInfo(id=0, nombre="A", num_segmentos=3, representatividad=0.5),
                 TopicoInfo(id=1, nombre="B", num_segmentos=3, representatividad=0.5),
@@ -202,11 +202,13 @@ class TestProcesar:
             num_topicos=2,
         )
 
-        with patch.object(svc, "_get_embedder"), \
-             patch(
-                 "tono_politico.temas.service.descubrir_temas",
-                 return_value=resultado_mock,
-             ):
+        with (
+            patch.object(svc, "_get_embedder"),
+            patch(
+                "tono_politico.temas.service.descubrir_temas",
+                return_value=resultado_mock,
+            ),
+        ):
             resultado = svc.procesar(segs)
 
         total = sum(t.representatividad for t in resultado.topicos)
