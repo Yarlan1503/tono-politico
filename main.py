@@ -206,6 +206,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="No limpiar el cache de audios/transcripciones al finalizar.",
     )
     parser.add_argument(
+        "--resume",
+        type=str,
+        default=None,
+        help="Directorio de run anterior con fase1-topicos.json para reusar Fase 1.",
+    )
+    parser.add_argument(
         "--verbose",
         action="store_true",
         help="Logging DEBUG en vez de INFO",
@@ -223,12 +229,26 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.topico is not None and not args.tema:
         parser.error("--tema es obligatorio cuando se usa --topico")
 
+    if args.resume is not None and args.topico is None:
+        parser.error("--resume requiere --topico y --tema")
+
     cfg = cargar_config(Path(args.config))
     runner = PipelineRunner(
         cfg=cfg,
         factories=_service_factories(),
         keep_cache=args.keep_cache,
     )
+
+    # --resume: reusa Fase 1 desde disco, ejecuta solo Fase 2
+    if args.resume is not None:
+        assert args.topico is not None
+        assert args.tema is not None
+        result = runner.analyze_resume(args.resume, args.topico, args.tema, args.output)
+        if result.exit_code == 0:
+            _imprimir_resumen_salida(result)
+        else:
+            _imprimir_resumen_fallo(result)
+        return result.exit_code
 
     if args.topico is not None:
         tema = args.tema

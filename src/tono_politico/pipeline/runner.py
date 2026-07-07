@@ -17,6 +17,7 @@ from typing import Any
 from tono_politico.config import Config
 from tono_politico.models import PlaylistInfo, VideoTranscript
 from tono_politico.temas.models import ResultadoTemas
+from tono_politico.temas.serializacion import cargar_fase1, guardar_fase1
 
 from .manifest import guardar_manifest
 from .models import PhaseName, PhaseRunStatus, RunManifest, RunResult, VideoRunStatus
@@ -57,13 +58,18 @@ class PipelineRunner:
     _active_manifest: RunManifest | None = field(default=None, init=False, repr=False)
 
     def discover(self, playlist_url: str) -> RunResult:
-        """Ejecuta Fase 1: Ingesta → Diarización → Segmentación → Temas."""
+        """Ejecuta Fase 1: Ingesta → Diarización → Segmentación → Temas.
+
+        Persiste ``fase1-topicos.json`` junto al manifest para que
+        ``analyze_resume`` pueda reutilizarlo sin re-ejecutar Fase 1.
+        """
         self._active_manifest = None
         manifest: RunManifest | None = None
         try:
             fase_1 = self._ejecutar_fase_1(playlist_url)
             manifest = fase_1.manifest
             manifest_path = self._persistir_manifest(manifest)
+            self._persistir_fase1(fase_1.resultado_temas, manifest)
             return RunResult(manifest=manifest, exit_code=0, manifest_path=manifest_path)
         except Exception:
             manifest = self._active_manifest or _failure_manifest(playlist_url)
@@ -233,6 +239,97 @@ class PipelineRunner:
         except Exception:
             logger.warning("No se pudo persistir el manifest", exc_info=True)
             return None
+
+    def _persistir_fase1(self, resultado: ResultadoTemas, manifest: RunManifest) -> None:
+        """Persiste ``fase1-topicos.json`` junto al manifest."""
+        if manifest.artifacts_dir is None:
+            return
+        try:
+            guardar_fase1(resultado, manifest.artifacts_dir)
+        except Exception:
+            logger.warning("No se pudo persistir fase1-topicos.json", exc_info=True)
+
+    def analyze_resume(
+        self,
+        run_dir: str | Path,
+        topico_id: int,
+        tema: str,
+        output_path: str | None,
+    ) -> RunResult:
+        """Ejecuta solo Fase 2 cargando Fase 1 desde disco.
+
+        No llama ingesta/diarización/segmentación/temas.
+        """
+        run_dir = Path(run_dir)
+        manifest: RunManifest | None = None
+        try:
+            resultado_temas = cargar_fase1(run_dir)
+
+            manifest = RunManifest(
+                run_id=run_dir.name,
+                playlist_url="(resume)",
+                playlist_name="(resume)",
+                status="ok",
+                artifacts_dir=run_dir,
+            )
+            self._active_manifest = manifest
+
+            svc_filtrado = self.factories.build_filtrado(self.cfg, topico_id)
+            resultado_filtrado = self._run_phase(
+                manifest,
+                "filtrado",
+                lambda: svc_filtrado.procesar(resultado_temas),
+            )
+
+            if resultado_filtrado.total_segmentos_filtrados == 0:
+                manifest.status = "failed"
+                manifest.phases[-1] = PhaseRunStatus(
+                    phase="filtrado",
+                    ok=False,
+                    elapsed_seconds=manifest.phases[-1].elapsed_seconds,
+                    message=f"No hay segmentos para el tópico {topico_id}",
+                )
+                manifest_path = self._persistir_manifest(manifest)
+                return RunResult(
+                    manifest=manifest,
+                    exit_code=1,
+                    manifest_path=manifest_path,
+                )
+
+            actor = self.cfg.diarizacion.actor_objetivo
+            svc_tono = self.factories.build_tono(self.cfg, actor, tema)
+            resultado_tono = self._run_phase(
+                manifest,
+                "tono",
+                lambda: svc_tono.procesar(resultado_filtrado),
+            )
+
+            svc_salida = self.factories.build_salida(self.cfg, output_path)
+            self._run_phase(manifest, "salida", lambda: svc_salida.procesar(resultado_tono))
+
+            informe_path = getattr(svc_salida, "output_path", None)
+            manifest_path = self._persistir_manifest(manifest)
+            return RunResult(
+                manifest=manifest,
+                exit_code=0,
+                informe_path=Path(informe_path) if informe_path is not None else None,
+                manifest_path=manifest_path,
+            )
+        except Exception:
+            manifest = manifest or RunManifest(
+                run_id=run_dir.name,
+                playlist_url="(resume)",
+                playlist_name="(resume)",
+                status="failed",
+                artifacts_dir=run_dir,
+            )
+            manifest.status = "failed"
+            manifest_path = self._persistir_manifest(manifest)
+            return RunResult(
+                manifest=manifest,
+                exit_code=1,
+                manifest_path=manifest_path,
+            )
 
     def _limpiar_cache(self, playlist_name: str) -> None:
         if not playlist_name:
