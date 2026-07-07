@@ -212,6 +212,32 @@ class TestPipelineRunnerDiscover:
         assert "segmentación rota" in result.manifest.phases[-1].message
         assert not cache_dir.exists()
 
+    def test_discover_si_get_playlist_info_falla_no_borra_data_dir(self, tmp_path: Path):
+        data_dir = tmp_path
+        sibling = tmp_path / "otra_cosa"
+        sibling.mkdir()
+        factories = _factories()
+        factories = ServiceFactories(
+            build_ingesta=factories.build_ingesta,
+            build_diarizacion=factories.build_diarizacion,
+            build_segmentacion=factories.build_segmentacion,
+            build_temas=factories.build_temas,
+            build_filtrado=factories.build_filtrado,
+            build_tono=factories.build_tono,
+            build_salida=factories.build_salida,
+            get_playlist_info=lambda url: (_ for _ in ()).throw(
+                RuntimeError("playlist info rota")
+            ),
+        )
+        runner = PipelineRunner(cfg=_cfg(data_dir), factories=factories, keep_cache=False)
+
+        result = runner.discover("playlist-url")
+
+        assert result.exit_code == 1
+        assert result.manifest.status == "failed"
+        assert data_dir.exists()
+        assert sibling.exists()
+
 
 class TestPipelineRunnerAnalyze:
     def test_analyze_ejecuta_fase_2_y_devuelve_informe_path(self, tmp_path: Path):
@@ -291,3 +317,29 @@ class TestPipelineRunnerAnalyze:
         assert "tono roto" in result.manifest.phases[-1].message
         assert salida.calls == []
         assert not cache_dir.exists()
+
+    def test_analyze_si_get_playlist_info_falla_no_borra_data_dir(self, tmp_path: Path):
+        data_dir = tmp_path
+        sibling = tmp_path / "otra_cosa"
+        sibling.mkdir()
+        factories = _factories()
+        factories = ServiceFactories(
+            build_ingesta=factories.build_ingesta,
+            build_diarizacion=factories.build_diarizacion,
+            build_segmentacion=factories.build_segmentacion,
+            build_temas=factories.build_temas,
+            build_filtrado=factories.build_filtrado,
+            build_tono=factories.build_tono,
+            build_salida=factories.build_salida,
+            get_playlist_info=lambda url: (_ for _ in ()).throw(
+                RuntimeError("playlist info rota")
+            ),
+        )
+        runner = PipelineRunner(cfg=_cfg(data_dir), factories=factories, keep_cache=False)
+
+        result = runner.analyze("playlist-url", topico_id=0, tema="seguridad", output_path=None)
+
+        assert result.exit_code == 1
+        assert result.manifest.status == "failed"
+        assert data_dir.exists()
+        assert sibling.exists()

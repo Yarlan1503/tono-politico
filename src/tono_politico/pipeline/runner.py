@@ -208,6 +208,12 @@ class PipelineRunner:
         return self.cfg.project.data_dir / playlist_name
 
     def _limpiar_cache(self, playlist_name: str) -> None:
+        if not playlist_name:
+            logger.warning(
+                "Se omitió limpieza de cache: playlist_name vacío "
+                "(posible fallo antes de obtener metadata)."
+            )
+            return
         playlist_dir = self._cache_dir(playlist_name)
         if not playlist_dir.exists():
             logger.debug("Cache no encontrado: %s", playlist_dir)
