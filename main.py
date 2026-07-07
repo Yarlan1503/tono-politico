@@ -173,8 +173,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     parser.add_argument(
         "--playlist",
-        required=True,
-        help="URL de la playlist de YouTube",
+        default=None,
+        help="URL de la playlist de YouTube (no necesario con --resume)",
     )
     parser.add_argument(
         "--topico",
@@ -232,6 +232,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.resume is not None and args.topico is None:
         parser.error("--resume requiere --topico y --tema")
 
+    if args.playlist is None and args.resume is None:
+        parser.error("--playlist es obligatorio (salvo cuando se usa --resume)")
+
     cfg = cargar_config(Path(args.config))
     runner = PipelineRunner(
         cfg=cfg,
@@ -251,6 +254,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return result.exit_code
 
     if args.topico is not None:
+        assert args.playlist is not None
         tema = args.tema
         assert tema is not None
         result = runner.analyze(args.playlist, args.topico, tema, args.output)
@@ -260,6 +264,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             _imprimir_resumen_fallo(result)
         return result.exit_code
 
+    assert args.playlist is not None
     result = runner.discover(args.playlist)
     if result.exit_code != 0:
         _imprimir_resumen_fallo(result)
