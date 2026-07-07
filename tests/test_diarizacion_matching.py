@@ -59,8 +59,9 @@ class TestDistanciaCoseno:
         assert d < 0.5
 
     def test_dim_alta(self):
-        """Funciona con dimensiones altas (ej. 512 dims como pyannote/embedding)."""
+        """Funciona con dimensiones altas (ej. embeddings de speaker)."""
         import random
+
         random.seed(42)
         a = [random.gauss(0, 1) for _ in range(512)]
         b = a.copy()  # idéntico
@@ -140,9 +141,9 @@ class TestIdentificarActor:
     def test_tres_speakers_mezcla(self):
         """Tres speakers: uno aceptado, uno ambiguo, uno rechazado."""
         emb_actor = [1.0, 0.0, 0.0]
-        emb_cercano = [0.99, 0.01, 0.0]    # distancia ~0.0 → aceptado
-        emb_medio = [0.4, 0.85, 0.1]        # distancia ~0.58 → ambiguo
-        emb_lejano = [0.0, 1.0, 0.0]        # distancia 1.0 → rechazado
+        emb_cercano = [0.99, 0.01, 0.0]  # distancia ~0.0 → aceptado
+        emb_medio = [0.4, 0.85, 0.1]  # distancia ~0.58 → ambiguo
+        emb_lejano = [0.0, 1.0, 0.0]  # distancia 1.0 → rechazado
 
         perfil = _perfil(emb_actor)
         resultados = identificar_actor(
@@ -185,6 +186,7 @@ class TestIdentificarActor:
         emb_actor = [1.0, 0.0]
         # 67° → distancia coseno ≈ 0.61 (entre 0.5 y 0.7)
         import math
+
         angulo = math.radians(67)
         emb = [math.cos(angulo), math.sin(angulo)]
 

@@ -10,10 +10,10 @@ Inserta una etapa entre Ingesta y Segmentación para asegurar que el análisis d
 VideoTranscript[] + audio WAV
   │
   ├── Whisper large-v3-turbo → texto + WordTimestamp[]  (Ingesta, ya hecho)
-  └── pyannote community-1   → TurnoOrador[]
+  └── pyannote Community-1   → TurnoOrador[] + speaker_embeddings
                                  │
-                                 ▼ construir_perfil()        — embedding de referencia del actor
-                                 ▼ identificar_actor()       — distancia coseno por speaker
+                                 ▼ construir_perfil()        — perfil de referencia cacheado
+                                 ▼ identificar_actor()       — distancia coseno por speaker_embeddings
                                  ▼ filtrar_por_actor()       — midpoint dentro de turnos del actor
                                  │
                                  VideoTranscript[] (solo segmentos del actor)
@@ -57,8 +57,7 @@ svc = DiarizacionService(
     actor="Lilly Téllez",
     video_ref_id="su9nURIj9XQ",
     data_dir=Path("data"),
-    pipeline_name="pyannote/speaker-diarization-community-1",
-    embedding_model="pyannote/embedding",
+    pipeline_name="pyannote-community/speaker-diarization-community-1",
     umbral_match=0.5,
     umbral_ambiguo=0.7,
 )
@@ -73,14 +72,13 @@ filtrados: list[VideoTranscript] = svc.procesar(transcripts, nombre_playlist="Pl
 | `actor` | `str` | `"Lilly Téllez"` | Nombre del actor político objetivo |
 | `video_ref_id` | `str` | `"su9nURIj9XQ"` | ID del video de referencia de voz |
 | `data_dir` | `Path` | `Path("data")` | Directorio raíz de datos (mismo que IngestaService) |
-| `pipeline_name` | `str` | `"pyannote/speaker-diarization-community-1"` | Pipeline de diarización |
-| `embedding_model` | `str` | `"pyannote/embedding"` | Modelo de embedding de voz |
+| `pipeline_name` | `str` | `"pyannote-community/speaker-diarization-community-1"` | Pipeline de diarización vigente, validado localmente |
 | `umbral_match` | `float` | `0.5` | Distancia coseno por debajo de la cual se acepta |
 | `umbral_ambiguo` | `float` | `0.7` | Distancia coseno por encima de la cual se rechaza |
 
 ### Lazy loading
 
-pyannote `Pipeline`, `SpeakerEmbedding`, `Audio` helper y el perfil de voz se cargan perezosamente en el primer `.procesar()`, no al importar el módulo. Las funciones puras reciben dependencias ya construidas (inyectadas), no las instancian internamente. Esto permite:
+pyannote `Pipeline`, `Audio` helper y el perfil de voz se cargan perezosamente en el primer `.procesar()`, no al importar el módulo. Community-1 entrega `output.speaker_embeddings`, por lo que no se carga un modelo separado de embeddings. Esto permite:
 
 - Tests rápidos sin modelos pesados (mockeando el pipeline y el extractor)
 - Import del paquete sin dependencias pesadas instaladas
@@ -92,7 +90,7 @@ pyannote `Pipeline`, `SpeakerEmbedding`, `Audio` helper y el perfil de voz se ca
 | `TurnoOrador` | `models.py` | DTO: turno individual de un orador (video_id, speaker_id, t_start, t_end) |
 | `PerfilVozActor` | `models.py` | DTO: perfil de voz cacheado en memoria (actor, embedding, modelo, duración) |
 | `SpeakerMatch` | `models.py` | DTO: resultado de matching (speaker_id, distancia, aceptado, es_ambiguo) |
-| `DiarizacionService` | `service.py` | Orquestador OOP (lazy-load pyannote + embedding + perfil cache) |
+| `DiarizacionService` | `service.py` | Orquestador OOP (lazy-load pyannote + speaker embeddings + perfil cache) |
 | `diarizar()` | `diarizacion.py` | Ejecuta pyannote con `exclusive_speaker_diarization` → `TurnoOrador[]` |
 | `construir_perfil()` | `perfil_voz.py` | Extrae embedding del audio de referencia → `PerfilVozActor` |
 | `distancia_coseno()` | `matching.py` | Distancia coseno (Python puro con `math`) |
@@ -106,11 +104,11 @@ pyannote `Pipeline`, `SpeakerEmbedding`, `Audio` helper y el perfil de voz se ca
 
 Función pura que recibe un pipeline ya cargado (no lo instancia) y ejecuta la diarización. Usa `exclusive_speaker_diarization` —no `itertracks` estándar— para obtener turnos **sin traslapes**, ideal para alinear limpiamente con los timestamps de Whisper.
 
-### `perfil_voz.py` — Perfil de voz del actor
+### Perfil de voz del actor
 
-**`construir_perfil(audio_ref, actor, video_id_ref, modelo_embedding, embedding_pipeline, audio_helper) → PerfilVozActor`**
+**Helper puro:** `construir_perfil(audio_ref, actor, video_id_ref, modelo_embedding, embedding_pipeline, audio_helper) → PerfilVozActor`.
 
-Función pura que extrae un embedding del audio completo (`window="whole"`, asume que el audio de referencia es mayoritariamente del actor). El resultado del pipeline `(1, D)` se aplana a `list[float]` vía `.tolist()` para mantener el DTO libre de numpy.
+**Producción actual:** `DiarizacionService._get_perfil(nombre_playlist)` construye el perfil una sola vez por ejecución usando el audio de referencia y el embedding interno del pipeline ya cargado. El resultado se aplana a `list[float]` para mantener el DTO libre de numpy. **Nota P1:** migrar este paso a salida pública `output.speaker_embeddings` del audio de referencia para eliminar el acceso privado actual.
 
 ### `matching.py` — Matching de speakers
 
@@ -160,11 +158,11 @@ r_start <= midpoint < r_end   # inclusivo en inicio, exclusivo en fin
 Pipeline **video-por-video** (no batch):
 
 1. Construye el `PerfilVozActor` una sola vez (cache en memoria).
-2. Resuelve el pipeline de diarización y el extractor de embeddings.
+2. Resuelve el pipeline de diarización.
 3. Por cada `VideoTranscript`:
-   - **Diarizar**: `diarizar(audio_path, pipeline, video_id)` → `TurnoOrador[]`
+   - **Diarizar**: `pipeline(audio_path)` → `exclusive_speaker_diarization` + `speaker_embeddings`
    - Si no hay turnos → transcript vacío, siguiente video.
-   - **Embeddings por speaker**: el extractor recorta el waveform por turno, extrae embedding, promedia por speaker → `{speaker_id: embedding}`
+   - **Embeddings por speaker**: `_extraer_embeddings(output)` lee `output.speaker_embeddings` alineado con `output.speaker_diarization.labels()` → `{speaker_id: embedding}`.
    - **Identificar actor**: `identificar_actor(speaker_embs, perfil)` → `SpeakerMatch[]`; los aceptados son el actor.
    - Si no hay speakers aceptados → transcript vacío, siguiente video.
    - **Filtrar**: `filtrar_por_actor(transcript, turnos_actor)` → `VideoTranscript` con solo segmentos del actor.
@@ -189,7 +187,7 @@ Definidos en `src/tono_politico/diarizacion/models.py`:
 | `actor` | `str` | Nombre del actor político objetivo |
 | `video_id_referencia` | `str` | ID del video usado como referencia |
 | `embedding` | `list[float]` | Embedding promedio del audio de referencia (aplanado, sin numpy) |
-| `modelo_embedding` | `str` | Modelo usado (`pyannote/embedding`) |
+| `modelo_embedding` | `str` | Identificador del origen del embedding (`pipeline-internal` actualmente) |
 | `duracion_segundos` | `float` | Duración del audio de referencia procesado |
 
 ### `SpeakerMatch`
@@ -207,9 +205,9 @@ Definidos en `src/tono_politico/diarizacion/models.py`:
 
 Se usa `output.exclusive_speaker_diarization` en vez del `itertracks` estándar. Esto produce turnos **sin traslapes**: cada instante del audio perteneve a un solo speaker. Sin traslapes, el criterio de midpoint en `filtrar_por_actor` no tiene ambigüedad — un segmento de Whisper siempre cae dentro de un único turno.
 
-### Pipeline y modelos inyectados, no instanciados
+### Pipeline cargado una vez y embeddings nativos del output
 
-Las funciones puras (`diarizar`, `construir_perfil`) reciben el pipeline/modelo ya cargado como argumento. El `DiarizacionService` es el único que hace lazy-loading (`_get_pipeline`, `_get_embedding_pipeline`, `_get_audio_helper`) y los inyecta a las funciones. Esto permite testear las funciones con mocks sin tocar pyannote.
+`DiarizacionService` hace lazy-loading de pyannote (`_get_pipeline`) y del helper de audio (`_get_audio_helper`). Para cada video usa una sola llamada al pipeline y extrae turnos desde `exclusive_speaker_diarization` y embeddings desde `output.speaker_embeddings`; esto evita cargar un modelo separado y mantiene los contratos serializables.
 
 ### Criterio midpoint en alineación
 
@@ -217,7 +215,7 @@ Para decidir si un `SegmentoRaw` pertenece al actor, se calcula `midpoint = (t_s
 
 ### `distancia_coseno` sin numpy
 
-Implementada en Python puro con `math` (`zip(strict=True)` + `math.sqrt`). Ninguna función pura del componente importa numpy — solo el extractor interno `_extraer_embeddings_por_speaker` lo usa para promediar vectores del pipeline, y el resultado se aplana a `list[float]` antes de salir.
+Implementada en Python puro con `math` (`zip(strict=True)` + `math.sqrt`). Ninguna función pura del componente importa numpy — solo el adapter/extractor interno convierte arrays del pipeline a `list[float]` antes de salir del service.
 
 ### Fronteras exclusivas en `clasificar_speaker`
 
@@ -231,22 +229,22 @@ distancia ≥ umbral_ambiguo            → rechazado
 
 ### Embedding aplanado a `list[float]`
 
-`PerfilVozActor.embedding` es `list[float]`, no `np.ndarray`. El pipeline devuelve `(1, D)`; `construir_perfil` hace `emb[0].tolist()` para almacenar. Esto mantiene el DTO serializable y libre de dependencia de numpy en el contrato entre capas.
+`PerfilVozActor.embedding` y los embeddings por speaker son `list[float]`, no `np.ndarray`. El service convierte la salida del pipeline con `.tolist()` antes de entregarla a helpers/DTOs. Esto mantiene los contratos serializables y libres de numpy entre capas.
 
 ### Thresholds calibrados con research (0.5 aceptar · 0.7 ambiguo)
 
-Los thresholds por defecto (`umbral_match=0.5`, `umbral_ambiguo=0.7`) están calibrados con base en la literatura de embeddings de pyannote y distribuciones de VoxCeleb:
+Los thresholds por defecto (`umbral_match=0.5`, `umbral_ambiguo=0.7`) están calibrados con base en documentación/literatura de diarización y un smoke real del pipeline:
 
-- **pyannote/embedding** reporta 2.8% EER en VoxCeleb1; el clustering threshold de **pyannote 3.1** es **0.7046** (distancia coseno). El `umbral_ambiguo=0.7` alinea con ese valor.
-- **SpeechBrain ECAPA-TDNN** usa threshold de similitud ~0.25 (distancia ~0.75) como punto de operación; nuestra zona ambigua absorbe ese rango.
-- Community discussions sobre `pyannote/embedding` + VoxCeleb muestran que distancias < 0.5 corresponden consistentemente al mismo speaker, y > 0.7 a speakers distintos; la zona intermedia es la región de decisión incierta.
+- El clustering threshold de **pyannote 3.1** es **0.7046** (distancia coseno); `umbral_ambiguo=0.7` queda alineado con ese punto de operación.
+- **SpeechBrain ECAPA-TDNN** usa threshold de similitud ~0.25 (distancia ~0.75); la zona ambigua absorbe ese rango.
+- En el smoke Play-PoliTest, 3 videos reales produjeron distancias `0.075–0.131`, muy por debajo de `umbral_match=0.5`.
 
 Fuentes consultadas:
 
-- pyannote/embedding — VoxCeleb1 EER 2.8%
 - pyannote.audio 3.1 — clustering threshold 0.7046
 - SpeechBrain ECAPA-TDNN — threshold de similitud 0.25
 - Community discussions (Hugging Face forums, pyannote-audio issues)
+- Smoke local Play-PoliTest — distancias 0.075–0.131 en 3 videos reales
 
 ### Match ambiguo: descartar y continuar
 
@@ -260,13 +258,12 @@ El contrato de salida es `list[VideoTranscript]` —mismo tipo que la entrada—
 
 | Herramienta | Uso |
 |-------------|-----|
-| `pyannote.audio` + `speaker-diarization-community-1` | Diarización: segmenta el audio en turnos por speaker |
-| `pyannote.audio` + `pyannote/embedding` | Embeddings de voz para matching contra el perfil del actor |
+| `pyannote.audio` + `pyannote-community/speaker-diarization-community-1` | Diarización + `speaker_embeddings` por speaker |
 | `pyannote.core` + `Audio` | Helper para recortar waveforms por turno y medir duración |
-| GPU recomendada | pyannote es lento en CPU; GPU acelera diarización + embeddings |
+| GPU recomendada | pyannote es lento en CPU; GPU acelera diarización |
 
 ## Notas de implementación
 
 - El `PerfilVozActor` **no se persiste** en disco — el cache es solo en memoria durante la ejecución del pipeline.
 - El `DiarizacionService` resuelve rutas de audio con `ruta_audio()` del Componente 1 (Ingesta), asumiendo que los `.wav` ya fueron descargados.
-- **Smoke test pendiente:** antes de producción, correr el componente con la playlist `Play-PoliTest` completa para calibrar los thresholds con datos reales y validar que el `speaker_id` de Lilly Téllez se identifica correctamente en los 7 videos. La calibración actual (0.5 / 0.7) está basada en literatura; datos reales pueden requerir ajuste fino.
+- **Smoke test completado:** perfil + matching fue validado en 3 videos reales de `Play-PoliTest`; las distancias observadas (`0.075–0.131`) quedan muy por debajo del umbral de aceptación `0.5`. El video `71GicqtYqpQ` sigue documentado como fallo controlado de descarga 403.

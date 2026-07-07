@@ -6,7 +6,7 @@ Orquesta las funciones puras del componente:
 
 Arquitectura basada en WhisperX y pyannote.audio 4.0:
     - El pipeline community-1 ya devuelve speaker_embeddings (256 dims por speaker)
-    - No se carga pyannote/embedding por separado
+    - No se carga un modelo separado de embeddings de voz
     - Token de HF se pasa al pipeline para modelos gated
 """
 
@@ -94,20 +94,14 @@ class DiarizacionService:
 
             turnos = _extraer_turnos(output, transcript.video_id)
             if not turnos:
-                logger.info(
-                    f"Video {transcript.video_id}: sin turnos diarizados, "
-                    f"saltando"
-                )
+                logger.info(f"Video {transcript.video_id}: sin turnos diarizados, saltando")
                 resultados.append(self._transcript_vacio(transcript))
                 continue
 
             # 2b. Embeddings por speaker (ya calculados por el pipeline)
             speaker_embs = _extraer_embeddings(output)
             if not speaker_embs:
-                logger.info(
-                    f"Video {transcript.video_id}: sin embeddings de speaker, "
-                    f"saltando"
-                )
+                logger.info(f"Video {transcript.video_id}: sin embeddings de speaker, saltando")
                 resultados.append(self._transcript_vacio(transcript))
                 continue
 
@@ -121,17 +115,12 @@ class DiarizacionService:
             speakers_actor = [m.speaker_id for m in matches if m.aceptado]
 
             if not speakers_actor:
-                logger.info(
-                    f"Video {transcript.video_id}: actor no identificado, "
-                    f"0 segmentos"
-                )
+                logger.info(f"Video {transcript.video_id}: actor no identificado, 0 segmentos")
                 resultados.append(self._transcript_vacio(transcript))
                 continue
 
             # 2d. Filtrar por turnos del actor
-            turnos_actor = [
-                t for t in turnos if t.speaker_id in speakers_actor
-            ]
+            turnos_actor = [t for t in turnos if t.speaker_id in speakers_actor]
             filtrado = filtrar_por_actor(transcript, turnos_actor)
             resultados.append(filtrado)
 
@@ -146,9 +135,7 @@ class DiarizacionService:
     # Resolvedores de ruta
     # ──────────────────────────────────────────────────────
 
-    def _audio_path(
-        self, video_id: str, nombre_playlist: str = ""
-    ) -> Path:
+    def _audio_path(self, video_id: str, nombre_playlist: str = "") -> Path:
         """Resuelve la ruta del .wav de un video."""
         return ruta_audio(nombre_playlist, video_id, self.data_dir)
 
@@ -164,7 +151,7 @@ class DiarizacionService:
         """Carga perezosa del pipeline de diarización pyannote.
 
         El pipeline community-1 incluye internamente el modelo de embedding,
-        por lo que no se carga pyannote/embedding por separado.
+        por lo que no se carga un modelo separado de embeddings de voz.
         """
         if self._pipeline is None:
             from pyannote.audio import Pipeline  # type: ignore[import-not-found]
@@ -245,8 +232,8 @@ class DiarizacionService:
 def _extraer_turnos(output: Any, video_id: str) -> list[TurnoOrador]:
     """Extrae TurnoOrador desde exclusive_speaker_diarization."""
     turnos: list[TurnoOrador] = []
-    for segment, _track, speaker in (
-        output.exclusive_speaker_diarization.itertracks(yield_label=True)
+    for segment, _track, speaker in output.exclusive_speaker_diarization.itertracks(
+        yield_label=True
     ):
         turnos.append(
             TurnoOrador(

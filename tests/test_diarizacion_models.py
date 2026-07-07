@@ -52,13 +52,13 @@ class TestPerfilVozActor:
             actor="Lilly Téllez",
             video_id_referencia="su9nURIj9XQ",
             embedding=[0.1, 0.2, 0.3],
-            modelo_embedding="pyannote/embedding",
+            modelo_embedding="pipeline-internal",
             duracion_segundos=30.0,
         )
         assert perfil.actor == "Lilly Téllez"
         assert perfil.video_id_referencia == "su9nURIj9XQ"
         assert len(perfil.embedding) == 3
-        assert perfil.modelo_embedding == "pyannote/embedding"
+        assert perfil.modelo_embedding == "pipeline-internal"
         assert perfil.duracion_segundos == 30.0
 
     def test_embedding_es_lista_de_floats(self):

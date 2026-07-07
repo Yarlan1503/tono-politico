@@ -57,8 +57,7 @@ No incluir `whisper_device` mientras `transcribir()` no lo acepte explícitament
 ```yaml
 diarizacion:
   estado: "implementado"
-  pipeline: "pyannote/speaker-diarization-community-1"
-  speaker_embedding_model: "pyannote/embedding"
+  pipeline: "pyannote-community/speaker-diarization-community-1"
   actor_objetivo: "Lilly Téllez"
   umbral_match: 0.5
   umbral_ambiguo: 0.7
@@ -79,8 +78,7 @@ DiarizacionService(
     actor="Lilly Téllez",
     video_ref_id="su9nURIj9XQ",
     data_dir=Path("data"),
-    pipeline_name="pyannote/speaker-diarization-community-1",
-    embedding_model="pyannote/embedding",
+    pipeline_name="pyannote-community/speaker-diarization-community-1",
     umbral_match=0.5,
     umbral_ambiguo=0.7,
 )
@@ -89,13 +87,15 @@ DiarizacionService(
 Notas:
 
 - **Implementado:** 62 tests en verde cubren models, perfil de voz, diarización, alineación, matching y service.
+- El pipeline vigente validado localmente es `pyannote-community/speaker-diarization-community-1`; el namespace oficial `pyannote/speaker-diarization-community-1` requiere token/condiciones HF y queda planificado como primary+fallback en P1.
+- Los embeddings por speaker salen de `output.speaker_embeddings` del propio pipeline; no se carga un modelo separado de embeddings.
 - La playlist de pruebas actual es `Play-PoliTest` (`PLE9Zk7g9R__M`) y contiene solo intervenciones de Lilly Téllez.
 - Para el perfil de voz se toma **un solo audio de referencia** de la misma playlist: `su9nURIj9XQ`.
 - El perfil de voz se cachea únicamente durante la ejecución del pipeline; no se persiste como artefacto estable.
 - Si el match de speaker contra el perfil es ambiguo, ese speaker se trata como no-actor y el pipeline continúa.
 - La salida hacia Segmentación debe contener únicamente texto atribuido al actor objetivo.
-- **Thresholds calibrados con research:** `umbral_match=0.5` y `umbral_ambiguo=0.7` basados en el clustering threshold de pyannote 3.1 (0.7046), distribuciones de VoxCeleb (pyannote/embedding 2.8% EER), y SpeechBrain ECAPA-TDNN (0.25).
-- **Smoke test pendiente:** calibrar thresholds con datos reales de la playlist Play-PoliTest antes de producción.
+- **Thresholds calibrados con research + smoke real:** `umbral_match=0.5` y `umbral_ambiguo=0.7` basados en el clustering threshold de pyannote 3.1 (0.7046), distribuciones VoxCeleb/SpeechBrain y smoke Play-PoliTest con distancias 0.075–0.131.
+- **Smoke test completado:** 3 videos reales de Play-PoliTest aceptados con margen amplio bajo `umbral_match=0.5`; `71GicqtYqpQ` sigue como fallo controlado de descarga 403.
 
 ## Componente 2: `segmentacion`
 

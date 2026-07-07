@@ -6,7 +6,7 @@ Tres funciones puras:
     identificar_actor(dict, perfil) → list[SpeakerMatch]
 
 Los thresholds por defecto (0.5 / 0.7) están calibrados con base en
-la literatura de pyannote/embedding + VoxCeleb (ver docs de diseño).
+literatura de diarización/speaker embeddings y smoke real (ver docs de diseño).
 """
 
 from __future__ import annotations

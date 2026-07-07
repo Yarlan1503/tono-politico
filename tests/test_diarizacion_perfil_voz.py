@@ -23,7 +23,7 @@ class FakeAudio:
 
 
 class FakeEmbeddingPipeline:
-    """Simula SpeakerEmbedding pipeline — devuelve (1, D) array."""
+    """Simula extractor de embedding — devuelve (1, D) array."""
 
     def __init__(self, dim: int = 16):
         self.dim = dim
@@ -65,7 +65,7 @@ class TestConstruirPerfil:
             audio_ref=audio_ref,
             actor="Lilly Téllez",
             video_id_ref="su9nURIj9XQ",
-            modelo_embedding="pyannote/embedding",
+            modelo_embedding="pipeline-internal",
             embedding_pipeline=pipeline,
             audio_helper=audio_helper,
         )
@@ -73,7 +73,7 @@ class TestConstruirPerfil:
         assert isinstance(perfil, PerfilVozActor)
         assert perfil.actor == "Lilly Téllez"
         assert perfil.video_id_referencia == "su9nURIj9XQ"
-        assert perfil.modelo_embedding == "pyannote/embedding"
+        assert perfil.modelo_embedding == "pipeline-internal"
         assert len(perfil.embedding) == 16
         assert all(isinstance(x, float) for x in perfil.embedding)
         assert perfil.duracion_segundos == 30.0

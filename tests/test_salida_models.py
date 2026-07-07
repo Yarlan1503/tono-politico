@@ -73,4 +73,5 @@ class TestInformeTono:
         informe = InformeTono(perfil=perfil, segmentos=[], provenance=prov)
         assert informe.perfil.actor == "X"
         assert informe.segmentos == []
+        assert informe.provenance is not None
         assert informe.provenance.pipeline == "test"

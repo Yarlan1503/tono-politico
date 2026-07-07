@@ -1,8 +1,8 @@
 # Defaults del proyecto Tono Político.
 #
 # Este archivo es la referencia viva de configuración para los services.
-# Estado actual: los services reciben estos valores por constructor; todavía no
-# existe un loader global/CLI que lea automáticamente este YAML.
+# Estado actual: main.py lee este YAML y construye los services con estos
+# defaults; los services siguen siendo configurables por constructor.
 
 project:
   data_dir: "data"

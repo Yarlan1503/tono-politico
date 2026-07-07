@@ -1,6 +1,6 @@
 """Construye el PerfilVozActor desde un audio de referencia.
 
-Función pura: recibe el pipeline de embedding ya cargado y un audio_helper
+Función pura: recibe un extractor/callable de embedding ya cargado y un audio_helper
 para medir duración. Extrae un embedding del audio completo (window="whole")
 y devuelve un PerfilVozActor con cache solo en memoria.
 """
@@ -25,15 +25,15 @@ def construir_perfil(
 ) -> PerfilVozActor:
     """Extrae el embedding de voz del actor desde el audio de referencia.
 
-    Usa el pipeline de embedding sobre el audio completo (asume que el audio
+    Usa el callable de embedding sobre el audio completo (asume que el audio
     de referencia es mayoritariamente del actor objetivo).
 
     Args:
         audio_ref: Ruta al .wav de referencia del actor.
         actor: Nombre del actor político objetivo.
         video_id_ref: ID del video de YouTube usado como referencia.
-        modelo_embedding: Nombre del modelo de embedding usado.
-        embedding_pipeline: Pipeline callable que devuelve (1, D) ndarray.
+        modelo_embedding: Identificador del origen del embedding usado.
+        embedding_pipeline: Callable que devuelve (1, D) ndarray/list.
         audio_helper: Instancia con .get_duration(file) → float.
 
     Returns:
@@ -46,8 +46,7 @@ def construir_perfil(
     embedding = emb_row.tolist() if hasattr(emb_row, "tolist") else list(emb_row)
 
     logger.info(
-        f"Perfil de voz construido: actor='{actor}', "
-        f"dim={len(embedding)}, duración={duracion:.1f}s"
+        f"Perfil de voz construido: actor='{actor}', dim={len(embedding)}, duración={duracion:.1f}s"
     )
 
     return PerfilVozActor(

@@ -26,7 +26,7 @@ Herramienta NLP para analizar el tono de actores políticos mexicanos a partir d
 | 5. Tono | ✅ Completo | 61 | `ResultadoTono` |
 | 6. Salida | ✅ Completo | 35 | `InformeTono` |
 
-Verificación local: `256 passed` (+ 5 slow), `ruff check` limpio.
+Verificación local: `255 passed` (`-m "not slow"`, 5 slow deselected), `ruff check` limpio y `ty check` limpio.
 
 ## Uso del pipeline completo
 
@@ -35,6 +35,9 @@ El pipeline se ejecuta con `main.py`, que lee `config/config.yaml` automáticame
 ```bash
 # Fase 1: descubrir tópicos
 uv run python main.py --playlist "https://youtube.com/playlist?list=..."
+
+# Debug: conservar audios/transcripciones runtime en data/<playlist>/
+uv run python main.py --playlist "https://youtube.com/playlist?list=..." --keep-cache
 
 # Fase 2: analizar un tópico específico
 uv run python main.py \
@@ -48,13 +51,14 @@ uv run python main.py \
 
 ## Componente 1.5: Diarización — detección del actor objetivo
 
-El pipeline no asume que todo el audio pertenece al actor. Un componente de diarización identifica quién habla cuándo usando `pyannote/speaker-diarization-community-1`, compara cada speaker contra un perfil de voz del actor objetivo, y filtra las transcripciones para conservar solo las intervenciones del actor.
+El pipeline no asume que todo el audio pertenece al actor. Un componente de diarización identifica quién habla cuándo usando Community-1 de pyannote, compara cada speaker contra un perfil de voz del actor objetivo, y filtra las transcripciones para conservar solo las intervenciones del actor.
 
-**Modelo de diarización:** `pyannote/speaker-diarization-community-1` (VBxClustering, threshold 0.6)  
-**Embeddings de voz:** `pyannote/embedding` (x-vector TDNN, 2.8% EER en VoxCeleb1)  
-**Criterio de matching:** distancia coseno contra perfil de voz, thresholds 0.5 (aceptar) / 0.7 (rechazar)  
-**Criterio de alineación:** midpoint temporal del segmento dentro del turno del actor  
-**Política de ambigüedad:** si el match cae en zona ambigua (0.5–0.7), se descarta como otro speaker  
+- **Modelo de diarización vigente:** `pyannote-community/speaker-diarization-community-1` (validado localmente; el namespace oficial `pyannote/speaker-diarization-community-1` requiere token/condiciones HF y queda como primary+fallback planificado en P1).
+- **Embeddings de voz:** `output.speaker_embeddings` del propio pipeline Community-1; no se carga un modelo separado de embeddings.
+- **Criterio de matching:** distancia coseno contra perfil de voz, thresholds 0.5 (aceptar) / 0.7 (rechazar).
+- **Criterio de alineación:** midpoint temporal del segmento dentro del turno del actor.
+- **Política de ambigüedad:** si el match cae en zona ambigua (0.5–0.7), se descarta como otro speaker.
+- **Smoke real:** 3 videos validados con distancias 0.075–0.131, margen amplio bajo el umbral 0.5.
 
 ## Componente 5: Tono — arquitectura híbrida
 
@@ -86,7 +90,7 @@ prototipos textuales en español. El LLM razona stance con actor + tema + few-sh
 - **Helpers puros:** la lógica interna se mantiene en funciones testeables.
 - **Lazy loading:** Whisper, spaCy, BERTopic, pyannote y modelos LFM2.5 se cargan solo cuando se usan.
 - **ASR default:** `large-v3-turbo` por balance calidad/velocidad; mantiene `word_timestamps=True` para alinear con speaker turns.
-- **Diarización implementada:** `pyannote/speaker-diarization-community-1`; el actor se identifica con un perfil de voz cacheado solo durante la ejecución. Si el match es ambiguo, se descarta como otro speaker y el pipeline continúa.
+- **Diarización implementada:** `pyannote-community/speaker-diarization-community-1`; los embeddings por speaker salen de `output.speaker_embeddings` del pipeline. El actor se identifica con un perfil de voz cacheado solo durante la ejecución. Si el match es ambiguo, se descarta como otro speaker y el pipeline continúa.
 - **DTOs compartidos vs locales:** `src/tono_politico/models.py` contiene DTOs compartidos por más de un componente. Los DTOs específicos viven dentro de su componente.
 - **Embeddings compartidos:** Segmentación, Temas y Tono usan `LiquidAI/LFM2.5-Embedding-350M`.
 - **Mean pooling manual en Tono:** `sentence-transformers` produce embeddings degenerados con LFM2.5; el Componente 5 usa `AutoModel` directo con mean pooling.
@@ -106,7 +110,7 @@ src/tono_politico/
 ├── diarizacion/           # Componente 1.5 ✅
 │   ├── service.py         # DiarizacionService (orquestador + lazy-load)
 │   ├── diarizacion.py     # diarizar() — pyannote → TurnoOrador[]
-│   ├── perfil_voz.py      # construir_perfil() — embedding de referencia
+│   ├── perfil_voz.py      # construir_perfil() — perfil/embedding de referencia
 │   ├── matching.py        # distancia_coseno(), clasificar_speaker(), identificar_actor()
 │   ├── alineacion.py      # filtrar_por_actor() — midpoint → segmentos del actor
 │   └── models.py          # TurnoOrador, PerfilVozActor, SpeakerMatch
@@ -171,13 +175,16 @@ uv run pytest tests/ -v -m "not slow"
 uv run pytest tests/ -v -m slow
 
 # Lint
-ruff check src/ tests/
+uv run ruff check src/ tests/ main.py
+
+# Format check
+uv run ruff format --check src/ tests/ main.py
 
 # Type check
-ty check src/
+uv run ty check
 
 # Todo antes de cerrar un cambio
-ruff check src/ tests/ && ty check src/ && uv run pytest tests/ -v -m "not slow"
+uv run ruff check src/ tests/ main.py && uv run ty check && uv run pytest tests/ -v -m "not slow"
 ```
 
 ## Uso programático por componente

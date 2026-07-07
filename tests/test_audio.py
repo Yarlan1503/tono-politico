@@ -10,6 +10,7 @@ from tono_politico.ingesta.audio import descargar_audio, verificar_cache_videos
 # Tests: verificar_cache_videos
 # ──────────────────────────────────────────────────────────
 
+
 class TestVerificarCacheVideos:
     def test_carpeta_inexistente_todo_faltante(self, playlist_mock, tmp_path):
         """Si no existe la carpeta de videos, todo debe ser faltante."""
@@ -106,6 +107,7 @@ class TestVerificarCacheVideos:
 # Tests: descargar_audio (estructura de carpetas)
 # ──────────────────────────────────────────────────────────
 
+
 class TestDescargarAudio:
     def test_crea_estructura_carpetas(self, playlist_mock, tmp_path):
         """descargar_audio debe crear videos-<nombre>/ aunque no exista."""
@@ -116,10 +118,9 @@ class TestDescargarAudio:
         mock_result.stderr = ""
 
         with patch("tono_politico.ingesta.audio.subprocess.run") as mock_run:
+
             def side_effect(*args, **kwargs):
-                ruta = tmp_path / "TestPlaylist" / (
-                    f"videos-TestPlaylist/{video.id}.wav"
-                )
+                ruta = tmp_path / "TestPlaylist" / (f"videos-TestPlaylist/{video.id}.wav")
                 ruta.parent.mkdir(parents=True, exist_ok=True)
                 ruta.write_bytes(b"fake_audio_data")
                 return mock_result
@@ -127,6 +128,7 @@ class TestDescargarAudio:
             mock_run.side_effect = side_effect
             ruta = descargar_audio(video, playlist_mock.nombre, base_dir=tmp_path)
 
+        assert ruta is not None
         assert ruta.exists()
         assert ruta.name == f"{video.id}.wav"
         assert "videos-TestPlaylist" in str(ruta)
