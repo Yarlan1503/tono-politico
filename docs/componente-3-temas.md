@@ -74,10 +74,10 @@ Los defaults también están documentados en `config/config.yaml`.
 **`descubrir_temas(segmentos, embedding_model, ...) -> ResultadoTemas`**
 
 1. Extrae `texto` de cada `Segmento`.
-2. Si `len(segmentos) < min_topic_size`, evita inventar clusters y devuelve todos los segmentos como outlier `-1`.
+2. Si `len(segmentos) < min_topic_size`, evita inventar clusters y asigna todos los segmentos a un único tópico controlado `id=0` (no outlier `-1`), para que el pipeline pueda filtrarlos y analizarlos.
 3. Configura UMAP:
    - `metric="cosine"`
-   - `random_state=42`
+   - `random_state=42` (configurable para reproducibilidad)
    - `n_neighbors=min(n_neighbors, len(textos) - 1)`
    - `n_components=min(n_components, len(textos) - 1)`
 4. Configura HDBSCAN:
@@ -85,9 +85,18 @@ Los defaults también están documentados en `config/config.yaml`.
    - `min_samples=1`
    - `metric="euclidean"`
    - `cluster_selection_method="eom"`
-5. Ejecuta `BERTopic.fit_transform(textos)`.
+5. Ejecuta `BERTopic.fit_transform(textos)` con `calculate_probabilities=False`.
 6. Extrae metadata con `get_topic_info()` y `get_topic(tid)`.
 7. Construye `SegmentoTematizado`, `TopicoInfo` y `ResultadoTemas`.
+
+### `serializacion.py` — Persistencia y resume
+
+Funciones para serializar `ResultadoTemas` a JSON y viceversa, permitiendo
+que `--resume` cargue Fase 1 desde disco sin re-ejecutar ingesta/diarización/segmentación/temas.
+
+- `guardar_fase1(resultado, run_dir) -> Path`: persiste `fase1-topicos.json`.
+- `cargar_fase1(run_dir) -> ResultadoTemas`: reconstruye desde JSON.
+- `resultado_temas_to_json(resultado) -> str` / `resultado_temas_from_json(json) -> ResultadoTemas`: round-trip completo.
 
 ### `models.py` — DTOs locales
 

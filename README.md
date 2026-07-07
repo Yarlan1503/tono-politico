@@ -26,7 +26,7 @@ Herramienta NLP para analizar el tono de actores políticos mexicanos a partir d
 | 5. Tono | ✅ Completo | 61 | `ResultadoTono` |
 | 6. Salida | ✅ Completo | 35 | `InformeTono` |
 
-Verificación local: `255 passed` (`-m "not slow"`, 5 slow deselected), `ruff check` limpio y `ty check` limpio.
+Verificación local: `328 passed` (`-m "not slow"`, 5 slow deselected), `ruff check` limpio y `ty check` limpio.
 
 ## Uso del pipeline completo
 
@@ -45,9 +45,18 @@ uv run python main.py \
     --topico 0 \
     --tema "fracking" \
     --output output/
+
+# Reusar Fase 1 para analizar otro tópico sin re-descargar/re-diarizar
+uv run python main.py \
+    --resume output/runs/<run_id> \
+    --topico 1 \
+    --tema "seguridad" \
+    --output output/
 ```
 
 **Flujo de dos fases:** la Fase 1 (Ingesta → Diarización → Segmentación → Temas) siempre se ejecuta y muestra los tópicos descubiertos. La Fase 2 (Filtrado → Tono → Salida) requiere `--topico N` y `--tema "descripción"`, y genera el informe final en `output/`.
+
+**`--resume`:** reutiliza el artefacto `fase1-topicos.json` de una corrida anterior para saltar Ingesta/Diarización/Segmentación/Temas y ejecutar solo Fase 2 sobre un tópico diferente. Cada corrida deja `output/runs/<run_id>/manifest.json` con status, videos procesados/omitidos, fases y timings.
 
 ## Componente 1.5: Diarización — detección del actor objetivo
 
@@ -103,37 +112,41 @@ prototipos textuales en español. El LLM razona stance con actor + tema + few-sh
 src/tono_politico/
 ├── models.py              # DTOs compartidos
 ├── protocol.py            # ComponenteProtocol
+├── config.py              # Config tipada (dataclasses) + load_config
 ├── ingesta/               # Componente 1 ✅
 │   ├── service.py         # IngestaService
 │   ├── playlist.py        # metadata de playlists vía yt-dlp
-│   ├── audio.py           # descarga/cache de audios .wav
+│   ├── audio.py           # descarga/cache de audios .wav (yt-dlp + --download-archive)
 │   ├── transcripcion.py   # Whisper + JSON
+│   ├── models.py          # DownloadResult (errores estructurados)
 │   └── cache.py           # rutas centralizadas
 ├── diarizacion/           # Componente 1.5 ✅
-│   ├── service.py         # DiarizacionService (orquestador + lazy-load)
+│   ├── service.py         # DiarizacionService (orquestador + lazy-load via adapter)
+│   ├── adapter.py         # load_pyannote_pipeline (primary/fallback/device/ProgressHook)
 │   ├── diarizacion.py     # diarizar() — pyannote → TurnoOrador[]
-│   ├── perfil_voz.py      # construir_perfil() — perfil/embedding de referencia
+│   ├── perfil_voz.py      # construir_perfil_desde_output() — desde speaker_embeddings público
 │   ├── matching.py        # distancia_coseno(), clasificar_speaker(), identificar_actor()
-│   ├── alineacion.py      # filtrar_por_actor() — midpoint → segmentos del actor
+│   ├── alineacion.py      # filtrar_por_actor() — midpoint → segmentos del actor (bisect)
 │   └── models.py          # TurnoOrador, PerfilVozActor, SpeakerMatch
 ├── segmentacion/          # Componente 2 ✅
 │   ├── service.py         # SegmentacionService
-│   ├── sentencias.py      # spaCy → Oracion[]
+│   ├── sentencias.py      # spaCy nlp.pipe → Oracion[]
 │   ├── breakpoints.py     # distancia coseno + percentil 95
 │   ├── agrupacion.py      # guardrails min/max
 │   └── models.py          # Oracion, Segmento
 ├── temas/                 # Componente 3 ✅
 │   ├── service.py         # TemasService
-│   ├── descubrimiento.py  # BERTopic + UMAP + HDBSCAN
+│   ├── descubrimiento.py  # BERTopic + UMAP (random_state) + HDBSCAN
+│   ├── serializacion.py   # guardar_fase1 / cargar_fase1 (JSON para --resume)
 │   └── models.py          # SegmentoTematizado, TopicoInfo, ResultadoTemas
 ├── filtrado/              # Componente 4 ✅
 │   ├── service.py         # FiltradoService
-│   ├── filtro.py          # filtrado determinista por tópico/relevancia
+│   ├── filtro.py          # filtrar determinista por tópico/relevancia
 │   └── models.py          # CriterioFiltrado, SegmentoFiltrado, ResultadoFiltrado
 ├── tono/                  # Componente 5 ✅
 │   ├── service.py         # TonoService (orquestador híbrido)
-│   ├── embeddings.py      # EmbeddorTono (mean pooling) + similitud coseno
-│   ├── zero_shot.py       # ClasificadorLLM para stance
+│   ├── embeddings.py      # EmbeddorTono (mean pooling, batch real) + similitud coseno
+│   ├── zero_shot.py       # ClasificadorLLM para stance (do_sample=False)
 │   ├── taxonomia.py       # 25 prototipos en 5 dimensiones
 │   └── models.py          # EtiquetaScore, Resultado*, SegmentoConTono, ResultadoTono
 ├── salida/                # Componente 6 ✅
@@ -141,7 +154,12 @@ src/tono_politico/
 │   ├── agregacion.py      # colapsar ResultadoTono → PerfilActor
 │   ├── serializacion.py   # JSON + Markdown
 │   └── models.py          # Provenance, PerfilActor, InformeTono
-main.py                    # CLI entry point — lee config/config.yaml
+├── pipeline/              # Orquestación ✅
+│   ├── runner.py          # PipelineRunner (discover/analyze/analyze_resume)
+│   ├── manifest.py        # guardar_manifest + resumen_final (CLI summary)
+│   ├── models.py          # RunManifest, RunResult, PhaseRunStatus, VideoRunStatus
+│   └── __init__.py        # exports públicos
+main.py                    # CLI entry point — wrapper ligero que delega a PipelineRunner
 ```
 
 ## Configuración
