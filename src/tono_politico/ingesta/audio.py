@@ -55,12 +55,13 @@ def descargar_audio(
     video: VideoInfo,
     nombre_playlist: str,
     base_dir: Path | None = None,
+    archive_path: Path | None = None,
 ) -> Path | None:
     """Wrapper legacy — devuelve Path | None.
 
     Para errores estructurados, usar ``descargar_audio_result``.
     """
-    result = descargar_audio_result(video, nombre_playlist, base_dir)
+    result = descargar_audio_result(video, nombre_playlist, base_dir, archive_path)
     return result.path
 
 
@@ -68,11 +69,16 @@ def descargar_audio_result(
     video: VideoInfo,
     nombre_playlist: str,
     base_dir: Path | None = None,
+    archive_path: Path | None = None,
 ) -> DownloadResult:
     """Descarga solo el audio de un video de YouTube como WAV.
 
     Devuelve un ``DownloadResult`` estructurado con path, ok y error.
     No crashea — los fallos quedan registrados en el resultado.
+
+    Args:
+        archive_path: Si se provee, se pasa ``--download-archive`` a yt-dlp
+            para evitar redescargar videos ya bajados en corridas previas.
     """
     dir_videos = ruta_dir_videos(nombre_playlist, base_dir)
     dir_videos.mkdir(parents=True, exist_ok=True)
@@ -92,8 +98,13 @@ def descargar_audio_result(
         "--no-warnings",
         "--retries",
         "10",
-        url,
     ]
+
+    if archive_path is not None:
+        cmd.extend(["--download-archive", str(archive_path)])
+        logger.debug("Usando download archive: %s", archive_path)
+
+    cmd.append(url)
 
     logger.info(f"Descargando audio: [{video.id}] {video.titulo[:60]}")
 

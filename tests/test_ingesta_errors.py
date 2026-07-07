@@ -103,3 +103,31 @@ class TestDescargarAudioResult:
         assert result.path is None
         assert result.error is not None
         assert "no existe" in result.error.lower() or "archivo" in result.error.lower()
+
+
+class TestDownloadArchive:
+    def test_comando_contiene_download_archive_cuando_se_provee(self, tmp_path: Path):
+        archive = tmp_path / "yt-dlp-archive.txt"
+        captured_cmd: list[str] = []
+
+        def fake_run(cmd, **kwargs):
+            captured_cmd.extend(cmd)
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+        with patch("tono_politico.ingesta.audio.subprocess.run", side_effect=fake_run):
+            descargar_audio_result(_video(), "test", tmp_path, archive_path=archive)
+
+        assert "--download-archive" in captured_cmd
+        assert str(archive) in captured_cmd
+
+    def test_comando_no_contiene_download_archive_si_no_se_provee(self, tmp_path: Path):
+        captured_cmd: list[str] = []
+
+        def fake_run(cmd, **kwargs):
+            captured_cmd.extend(cmd)
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+        with patch("tono_politico.ingesta.audio.subprocess.run", side_effect=fake_run):
+            descargar_audio_result(_video(), "test", tmp_path)
+
+        assert "--download-archive" not in captured_cmd
