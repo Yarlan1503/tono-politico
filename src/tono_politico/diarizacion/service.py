@@ -59,7 +59,6 @@ class DiarizacionService:
 
         # Lazy-load
         self._pipeline: Any = None
-        self._audio_helper: Any = None
         self._perfil: Any = None
 
     def procesar(
@@ -172,47 +171,30 @@ class DiarizacionService:
             self.pipeline_name = loaded.pipeline_name
         return self._pipeline
 
-    def _get_audio_helper(self) -> Any:
-        """Carga perezosa del helper de audio."""
-        if self._audio_helper is None:
-            from pyannote.audio import Audio  # type: ignore[import-not-found]
-
-            self._audio_helper = Audio(sample_rate=16000, mono="downmix")
-        return self._audio_helper
-
     def _get_perfil(self, nombre_playlist: str) -> Any:
         """Construye el perfil de voz del actor (una sola vez, cache en memoria).
 
-        Usa el modelo de embedding interno del pipeline para extraer el
-        embedding del audio de referencia.
+        Ejecuta el pipeline sobre el audio de referencia y construye el perfil
+        desde output.speaker_embeddings público (sin acceder a _inferences).
         """
         if self._perfil is None:
             pipeline = self._get_pipeline()
-            audio_helper = self._get_audio_helper()
             ref_path = self._ref_audio_path(nombre_playlist)
 
-            # Usar el embedding interno del pipeline
-            emb_callable = pipeline._inferences["_embedding"]
-            ref_dur = audio_helper.get_duration(str(ref_path))
-            from pyannote.core import Segment  # type: ignore[import-not-found]
+            output = run_pyannote_pipeline(pipeline, str(ref_path))
 
-            waveform, _ = audio_helper.crop(ref_path, Segment(0, ref_dur))
-            import numpy as np
+            from .perfil_voz import construir_perfil_desde_output
 
-            emb = np.array(emb_callable(waveform[None])).flatten()
-
-            from .models import PerfilVozActor
-
-            self._perfil = PerfilVozActor(
+            self._perfil = construir_perfil_desde_output(
+                output,
                 actor=self.actor,
-                video_id_referencia=self.video_ref_id,
-                embedding=emb.tolist(),
-                modelo_embedding="pipeline-internal",
-                duracion_segundos=ref_dur,
+                video_ref_id=self.video_ref_id,
+                pipeline_name=self.pipeline_name,
             )
             logger.info(
                 f"Perfil de voz construido: actor='{self.actor}', "
-                f"dim={len(emb)}, duración={ref_dur:.1f}s"
+                f"dim={len(self._perfil.embedding)}, "
+                f"modelo={self._perfil.modelo_embedding}"
             )
         return self._perfil
 

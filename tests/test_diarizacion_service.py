@@ -45,12 +45,14 @@ class FakeDiarization:
 
 class FakeExclusiveDiarization(FakeDiarization):
     """Simula output.exclusive_speaker_diarization."""
+
     pass
 
 
 @dataclass
 class FakePipelineOutput:
     """Simula el objeto devuelto por pipeline(audio_path)."""
+
     _exclusive: FakeExclusiveDiarization
     _speaker_dia: FakeDiarization
     speaker_embeddings: np.ndarray | None
@@ -64,16 +66,6 @@ class FakePipelineOutput:
         return self._speaker_dia
 
 
-class FakeEmbCallable:
-    """Simula pipeline._inferences['_embedding'] — callable que devuelve embedding."""
-
-    def __init__(self, emb: np.ndarray):
-        self._emb = emb
-
-    def __call__(self, waveform):
-        return self._emb.reshape(1, -1)
-
-
 class FakePipeline:
     """Pipeline que devuelve output con turnos + embeddings por audio."""
 
@@ -82,21 +74,16 @@ class FakePipeline:
         diarization_by_audio: dict[str, list[tuple[float, float, str]]],
         embeddings_by_audio: dict[str, dict[str, list[float]]] | None = None,
         ref_embedding: list[float] | None = None,
-    ):
+    ) -> None:
         self._diar = diarization_by_audio
         self._embs = embeddings_by_audio or {}
-        self._ref_emb = np.array(ref_embedding or [1.0, 0.0, 0.0])
-        # El embedding callable simula pipeline._inferences["_embedding"]
-        self._inferences = {
-            "_embedding": FakeEmbCallable(self._ref_emb),
-        }
+        self._ref_emb = ref_embedding  # kept for backwards compat
 
     def __call__(self, audio_path, **kwargs) -> FakePipelineOutput:
         key = str(audio_path)
         raw_tracks = self._diar.get(key, [])
         tracks = [
-            (FakeSegment(s, e), f"track_{i}", label)
-            for i, (s, e, label) in enumerate(raw_tracks)
+            (FakeSegment(s, e), f"track_{i}", label) for i, (s, e, label) in enumerate(raw_tracks)
         ]
         excl = FakeExclusiveDiarization(tracks)
         dia = FakeDiarization(tracks)
@@ -113,7 +100,7 @@ class FakePipeline:
 
 
 class FakeAudioHelper:
-    """Simula pyannote Audio con get_duration y crop."""
+    """Simula pyannote Audio con get_duration y crop. Retenido para compat."""
 
     def __init__(self, durations: dict[str, float]):
         self._durations = durations
@@ -122,7 +109,6 @@ class FakeAudioHelper:
         return self._durations.get(str(file_path), 30.0)
 
     def crop(self, file_path, segment):
-        # Devuelve waveform dummy de 1xN muestras
         import torch
 
         dur = segment.end - segment.start
@@ -173,18 +159,18 @@ def _make_pipeline(
         path = str(svc._audio_path(vid, playlist))
         embs_by_audio[path] = embs
 
-    return FakePipeline(diar_by_audio, embs_by_audio, ref_emb or [1.0, 0.0, 0.0])
+    # El audio de referencia también necesita diarización + embeddings
+    ref_path = str(svc._ref_audio_path(playlist))
+    ref_embedding = ref_emb or [1.0, 0.0, 0.0]
+    diar_by_audio[ref_path] = [(0.0, 30.0, "SPEAKER_00")]
+    embs_by_audio[ref_path] = {"SPEAKER_00": ref_embedding}
+
+    return FakePipeline(diar_by_audio, embs_by_audio, ref_embedding)
 
 
 def _patch_service(svc, pipeline, playlist, ref_duration=30.0):
-    """Parchea el service con fakes."""
-    ref_path = str(svc._ref_audio_path(playlist))
-    return (
-        patch.object(svc, "_get_pipeline", return_value=pipeline),
-        patch.object(svc, "_get_audio_helper", return_value=FakeAudioHelper({
-            ref_path: ref_duration,
-        })),
-    )
+    """Parchea el service con fakes — devuelve un solo patcher."""
+    return patch.object(svc, "_get_pipeline", return_value=pipeline)
 
 
 # ──────────────────────────────────────────────────────────
@@ -271,19 +257,22 @@ class TestProcesarUnVideo:
         svc = DiarizacionService()
         playlist = "test"
 
-        transcript = _transcript([
-            _seg("Hola", 0.0, 2.0),
-            _seg("Mundo", 4.0, 6.0),
-        ])
+        transcript = _transcript(
+            [
+                _seg("Hola", 0.0, 2.0),
+                _seg("Mundo", 4.0, 6.0),
+            ]
+        )
 
         pipeline = _make_pipeline(
-            svc, playlist,
+            svc,
+            playlist,
             video_tracks={"v1": [(0.0, 3.0, "SPEAKER_00"), (4.0, 7.0, "SPEAKER_00")]},
             video_embs={"v1": {"SPEAKER_00": [0.99, 0.01, 0.0]}},
         )
 
-        p1, p2 = _patch_service(svc, pipeline, playlist)
-        with p1, p2:
+        patcher = _patch_service(svc, pipeline, playlist)
+        with patcher:
             resultado = svc.procesar([transcript], nombre_playlist=playlist)
 
         assert len(resultado) == 1
@@ -297,13 +286,14 @@ class TestProcesarUnVideo:
         transcript = _transcript([_seg("Hola", 0.0, 2.0)])
 
         pipeline = _make_pipeline(
-            svc, playlist,
+            svc,
+            playlist,
             video_tracks={"v1": [(0.0, 3.0, "SPEAKER_00")]},
             video_embs={"v1": {"SPEAKER_00": [0.0, 1.0, 0.0]}},  # rechazado
         )
 
-        p1, p2 = _patch_service(svc, pipeline, playlist)
-        with p1, p2:
+        patcher = _patch_service(svc, pipeline, playlist)
+        with patcher:
             resultado = svc.procesar([transcript], nombre_playlist=playlist)
 
         assert len(resultado) == 1
@@ -326,7 +316,8 @@ class TestProcesarMultiplesVideos:
         t2 = _transcript([_seg("B", 0.0, 1.0)], video_id="v2")
 
         pipeline = _make_pipeline(
-            svc, playlist,
+            svc,
+            playlist,
             video_tracks={
                 "v1": [(0.0, 2.0, "SPEAKER_00")],
                 "v2": [(0.0, 2.0, "SPEAKER_01")],
@@ -337,8 +328,8 @@ class TestProcesarMultiplesVideos:
             },
         )
 
-        p1, p2 = _patch_service(svc, pipeline, playlist)
-        with p1, p2:
+        patcher = _patch_service(svc, pipeline, playlist)
+        with patcher:
             resultado = svc.procesar([t1, t2], nombre_playlist=playlist)
 
         assert len(resultado) == 2
@@ -358,8 +349,8 @@ class TestEdgeCases:
         svc = DiarizacionService()
         pipeline = FakePipeline({})
 
-        p1, p2 = _patch_service(svc, pipeline, "test")
-        with p1, p2:
+        patcher = _patch_service(svc, pipeline, "test")
+        with patcher:
             resultado = svc.procesar([], nombre_playlist="test")
 
         assert resultado == []
@@ -372,13 +363,14 @@ class TestEdgeCases:
         transcript = _transcript([_seg("Hola", 0.0, 2.0)], video_id="v1")
 
         pipeline = _make_pipeline(
-            svc, playlist,
+            svc,
+            playlist,
             video_tracks={"v1": []},  # sin turnos
             video_embs={"v1": {}},
         )
 
-        p1, p2 = _patch_service(svc, pipeline, playlist)
-        with p1, p2:
+        patcher = _patch_service(svc, pipeline, playlist)
+        with patcher:
             resultado = svc.procesar([transcript], nombre_playlist=playlist)
 
         assert len(resultado) == 1

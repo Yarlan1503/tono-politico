@@ -110,9 +110,9 @@ Función pura que recibe un pipeline ya cargado (no lo instancia) y ejecuta la d
 
 ### Perfil de voz del actor
 
-**Helper puro:** `construir_perfil(audio_ref, actor, video_id_ref, modelo_embedding, embedding_pipeline, audio_helper) → PerfilVozActor`.
+**Helper puro:** `construir_perfil_desde_output(output, actor, video_ref_id, pipeline_name) → PerfilVozActor`.
 
-**Producción actual:** `DiarizacionService._get_perfil(nombre_playlist)` construye el perfil una sola vez por ejecución usando el audio de referencia y el embedding interno del pipeline ya cargado. El resultado se aplana a `list[float]` para mantener el DTO libre de numpy. **Nota P1:** migrar este paso a salida pública `output.speaker_embeddings` del audio de referencia para eliminar el acceso privado actual.
+**Producción actual:** `DiarizacionService._get_perfil(nombre_playlist)` ejecuta el pipeline sobre el audio de referencia y construye el perfil desde `output.speaker_embeddings` público, eligiendo el speaker con mayor duración total. El resultado se aplana a `list[float]` para mantener el DTO libre de numpy. No se accede a `pipeline._inferences` ni a ningún API privado.
 
 ### `matching.py` — Matching de speakers
 
@@ -191,7 +191,7 @@ Definidos en `src/tono_politico/diarizacion/models.py`:
 | `actor` | `str` | Nombre del actor político objetivo |
 | `video_id_referencia` | `str` | ID del video usado como referencia |
 | `embedding` | `list[float]` | Embedding promedio del audio de referencia (aplanado, sin numpy) |
-| `modelo_embedding` | `str` | Identificador del origen del embedding (`pipeline-internal` actualmente) |
+| `modelo_embedding` | `str` | Identificador del origen del embedding (`speaker_embeddings:<pipeline_name>`) |
 | `duracion_segundos` | `float` | Duración del audio de referencia procesado |
 
 ### `SpeakerMatch`
