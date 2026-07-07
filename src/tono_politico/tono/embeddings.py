@@ -141,48 +141,45 @@ class EmbeddorTono:
             dtype=torch.bfloat16,
         )
         self._model.eval()
+        self._model.to(self.device)
 
     def embed(self, text: str) -> np.ndarray:
         """Embebe un texto y devuelve un vector 1D.
 
-        Args:
-            text: Texto a embeber.
-
-        Returns:
-            Vector 1D de shape (dim,) — 1024 dims para LFM2.5.
+        Wrapper sobre embed_batch para un solo texto.
         """
-        self._load()
-        assert self._tokenizer is not None
-        assert self._model is not None
-
-        inputs = self._tokenizer(
-            text,
-            return_tensors="pt",
-            max_length=512,
-            truncation=True,
-            padding=True,
-        )
-
-        with torch.no_grad():
-            outputs = self._model(**inputs)
-
-        emb = mean_pooling(outputs.last_hidden_state, inputs["attention_mask"])
-        return emb.squeeze(0).float().numpy()
+        return self.embed_batch([text])[0]
 
     def embed_batch(self, texts: list[str]) -> np.ndarray:
-        """Embebe múltiples textos y devuelve una matriz.
+        """Embebe múltiples textos en una sola pasada del modelo.
+
+        Tokeniza todos los textos juntos con padding dinámico y procesa
+        el batch completo en un solo forward pass.
 
         Args:
             texts: Lista de textos a embeber.
 
         Returns:
-            Matriz de shape (n_texts, dim).
+            Matriz de shape (n_texts, dim). Lista vacía → shape (0,).
         """
+        if not texts:
+            return np.zeros((0,))
+
         self._load()
+        assert self._tokenizer is not None
+        assert self._model is not None
 
-        embeddings = []
-        for text in texts:
-            emb = self.embed(text)
-            embeddings.append(emb)
+        inputs = self._tokenizer(
+            texts,
+            return_tensors="pt",
+            max_length=512,
+            truncation=True,
+            padding=True,
+        )
+        inputs = {k: v.to(self.device) for k, v in inputs.items()}
 
-        return np.array(embeddings)
+        with torch.no_grad():
+            outputs = self._model(**inputs)
+
+        embs = mean_pooling(outputs.last_hidden_state, inputs["attention_mask"])
+        return embs.float().cpu().numpy()

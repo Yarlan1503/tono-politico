@@ -12,6 +12,7 @@ from tono_politico.segmentacion.service import SegmentacionService
 # Fakes
 # ──────────────────────────────────────────────────────────
 
+
 @dataclass
 class FakeSent:
     text: str
@@ -27,22 +28,30 @@ class FakeDoc:
 class FakeSpacyNlp:
     """Divide texto por '. ' manteniendo offsets."""
 
+    def __init__(self):
+        self.pipe_calls = 0
+        self.call_calls = 0
+
     def __call__(self, text: str) -> FakeDoc:
+        self.call_calls += 1
+        return self._process(text)
+
+    def pipe(self, texts, batch_size=50):
+        self.pipe_calls += 1
+        return [self._process(t) for t in texts]
+
+    def _process(self, text: str) -> FakeDoc:
         sents: list[FakeSent] = []
         pos = 0
         parts = text.split(". ")
         for i, part in enumerate(parts):
-            sent_text = part + (
-                "." if not part.endswith(".") and i < len(parts) - 1 else ""
-            )
+            sent_text = part + ("." if not part.endswith(".") and i < len(parts) - 1 else "")
             sent_text = sent_text.strip()
             if not sent_text:
                 continue
             start = text.find(sent_text, pos)
             end = start + len(sent_text)
-            sents.append(
-                FakeSent(text=sent_text, start_char=start, end_char=end)
-            )
+            sents.append(FakeSent(text=sent_text, start_char=start, end_char=end))
             pos = end
         return FakeDoc(sents=sents)
 
@@ -60,6 +69,7 @@ class FakeEmbeddingModel:
 # ──────────────────────────────────────────────────────────
 # Helpers
 # ──────────────────────────────────────────────────────────
+
 
 def transcript_con_segmentos(
     video_id: str = "vid001",
@@ -93,9 +103,7 @@ def transcript_con_segmentos(
                     WordTimestamp(word="El", start=3.0, end=3.2, probability=0.9),
                     WordTimestamp(word="PIB", start=3.2, end=3.6, probability=0.9),
                     WordTimestamp(word="aumentó", start=3.6, end=4.2, probability=0.9),
-                    WordTimestamp(
-                        word="significativamente.", start=4.2, end=5.0, probability=0.9
-                    ),
+                    WordTimestamp(word="significativamente.", start=4.2, end=5.0, probability=0.9),
                 ],
             ),
             SegmentoRaw(
@@ -132,6 +140,7 @@ def transcript_con_segmentos(
 # ──────────────────────────────────────────────────────────
 # Tests
 # ──────────────────────────────────────────────────────────
+
 
 class TestSegmentacionService:
     def test_init_guarda_config(self):
@@ -188,12 +197,14 @@ class TestSegmentacionService:
 
         # Vectores: economía similar entre sí, fútbol similar entre sí,
         # pero distintos entre grupos
-        embedder = FakeEmbeddingModel({
-            "La economía crece este año.": [1.0, 0.0],
-            "El PIB aumentó significativamente.": [0.99, 0.01],
-            "El fútbol fue emocionante.": [0.0, 1.0],
-            "El gol decisivo en el minuto noventa.": [0.01, 0.99],
-        })
+        embedder = FakeEmbeddingModel(
+            {
+                "La economía crece este año.": [1.0, 0.0],
+                "El PIB aumentó significativamente.": [0.99, 0.01],
+                "El fútbol fue emocionante.": [0.0, 1.0],
+                "El gol decisivo en el minuto noventa.": [0.01, 0.99],
+            }
+        )
 
         with (
             patch.object(svc, "_get_nlp", return_value=FakeSpacyNlp()),
@@ -248,3 +259,40 @@ class TestSegmentacionService:
 
         svc = SegmentacionService()
         assert isinstance(svc, ComponenteProtocol)
+
+    def test_extraer_oraciones_usa_nlp_pipe_no_call_por_segmento(self):
+        """spaCy debe usar nlp.pipe (1 llamada) no nlp() por segmento."""
+        from tono_politico.segmentacion.sentencias import extraer_oraciones
+
+        nlp = FakeSpacyNlp()
+        segmentos = [
+            SegmentoRaw(
+                texto="Hola mundo. Adiós mundo.",
+                t_start=0.0,
+                t_end=5.0,
+                pausa_antes=0.0,
+                words=[
+                    WordTimestamp(word="Hola", start=0.0, end=0.5),
+                    WordTimestamp(word="mundo.", start=0.5, end=1.0),
+                    WordTimestamp(word="Adiós", start=1.0, end=1.5),
+                    WordTimestamp(word="mundo.", start=1.5, end=2.0),
+                ],
+            ),
+            SegmentoRaw(
+                texto="Otro texto. Más texto.",
+                t_start=5.0,
+                t_end=10.0,
+                pausa_antes=0.5,
+                words=[
+                    WordTimestamp(word="Otro", start=5.0, end=5.5),
+                    WordTimestamp(word="texto.", start=5.5, end=6.0),
+                    WordTimestamp(word="Más", start=6.0, end=6.5),
+                    WordTimestamp(word="texto.", start=6.5, end=7.0),
+                ],
+            ),
+        ]
+
+        extraer_oraciones(segmentos, nlp)
+
+        assert nlp.pipe_calls == 1, "Debe usar nlp.pipe una vez"
+        assert nlp.call_calls == 0, "No debe llamar nlp() por segmento"

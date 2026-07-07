@@ -18,6 +18,9 @@ if TYPE_CHECKING:
     class SpacyLike(Protocol):
         def __call__(self, text: str) -> Any: ...
 
+        def pipe(self, texts, batch_size: int = ...) -> Any: ...
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -27,42 +30,39 @@ def extraer_oraciones(
 ) -> list[Oracion]:
     """Divide segmentos crudos en oraciones preservando timestamps.
 
-    Usa spaCy para detectar límites de oración dentro del texto de cada
-    SegmentoRaw. Luego mapea los WordTimestamp de Whisper a cada oración
-    usando los offsets de caracteres que spaCy provee (sent.start_char /
-    sent.end_char) contra la posición acumulada de cada palabra.
-
-    Args:
-        segmentos: Lista de SegmentoRaw (salida de Whisper).
-        nlp: Instancia de modelo spaCy (o compatible con __call__ → doc).
-
-    Returns:
-        Lista de Oracion en orden cronológico.
+    Usa spaCy nlp.pipe para procesar todos los textos en batch (una sola
+    pasada). Luego mapea los WordTimestamp de Whisper a cada oración
+    usando los offsets de caracteres que spaCy provee.
     """
     if not segmentos:
         return []
 
+    # Filtrar segmentos válidos y recolectar sus textos
+    segmentos_validos = [s for s in segmentos if s.words]
+    if not segmentos_validos:
+        for s in segmentos:
+            if not s.words:
+                logger.warning(f"Segmento sin words, omitiendo: {s.texto[:50]}...")
+        return []
+
+    for s in segmentos:
+        if not s.words:
+            logger.warning(f"Segmento sin words, omitiendo: {s.texto[:50]}...")
+
+    # Procesar todos los textos en una sola pasada con nlp.pipe
+    textos = [s.texto for s in segmentos_validos]
+    docs = list(nlp.pipe(textos, batch_size=50))
+
+    # Construir oraciones mapeando cada doc a su segmento
     oraciones: list[Oracion] = []
-
-    for segmento in segmentos:
-        if not segmento.words:
-            logger.warning(
-                f"Segmento sin words, omitiendo: {segmento.texto[:50]}..."
-            )
-            continue
-
-        oraciones.extend(
-            _dividir_segmento(segmento, nlp)
-        )
+    for segmento, doc in zip(segmentos_validos, docs, strict=True):
+        oraciones.extend(_dividir_segmento_con_doc(segmento, doc))
 
     return oraciones
 
 
-def _dividir_segmento(
-    segmento: SegmentoRaw, nlp: SpacyLike
-) -> list[Oracion]:
-    """Divide un SegmentoRaw individual en oraciones con words asignadas."""
-    doc = nlp(segmento.texto)
+def _dividir_segmento_con_doc(segmento: SegmentoRaw, doc: Any) -> list[Oracion]:
+    """Divide un SegmentoRaw en oraciones usando un doc spaCy ya procesado."""
     sents = list(doc.sents)
 
     # Construir mapa de offsets: para cada palabra, su rango [char_start, char_end)
