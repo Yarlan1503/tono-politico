@@ -28,7 +28,9 @@ Herramienta NLP para analizar el tono de actores políticos mexicanos a partir d
 
 Verificación local: `337 passed` (`-m "not slow"`, 5 slow deselected), `ruff check` limpio y `ty check` limpio.
 
-Gate canónico: `bash scripts/check.sh` (ruff + ty + pytest). Con modelos lentos: `RUN_SLOW=1 bash scripts/check.sh`.
+Gate canónico: `bash check.sh` (ruff + ty + pytest). Con modelos lentos: `RUN_SLOW=1 bash check.sh`.
+
+Limpieza: `bash clean.sh` (output/ + data/ + caches Python, con confirmación). Filtros: `--output`, `--data`, `--caches`. Dry-run: `--dry-run`. Sin confirmación: `-y`.
 
 ## Uso del pipeline completo
 

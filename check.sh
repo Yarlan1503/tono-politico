@@ -3,12 +3,12 @@
 # Ejecuta ruff + ty + pytest (excluyendo tests que cargan modelos pesados).
 #
 # Uso:
-#   bash scripts/check.sh           # gate rápido (default)
-#   RUN_SLOW=1 bash scripts/check.sh # gate + tests slow (carga modelos reales)
+#   bash check.sh           # gate rápido (default)
+#   RUN_SLOW=1 bash check.sh # gate + tests slow (carga modelos reales)
 
 set -euo pipefail
 
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")"
 
 echo "── ruff check ──────────────────────────────────────────"
 uv run ruff check src/ tests/ main.py

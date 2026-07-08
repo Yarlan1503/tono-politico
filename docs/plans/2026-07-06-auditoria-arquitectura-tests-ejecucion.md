@@ -729,7 +729,7 @@ Expected: `main.py` importado y cubierto.
 **Files:**
 - Modify: `AGENTS.md`
 - Modify: `README.md`
-- Optional Create: `scripts/check.sh` si se decide trackear scripts.
+- Resolved: `check.sh` movido a la raíz del proyecto; `scripts/` eliminado (run_pipeline.py era obsoleto, check.sh promocionado a raíz).
 
 **Command:**
 
@@ -746,7 +746,7 @@ uv run pytest tests/ -m "not slow" --tb=short
 RUN_SLOW_MODELS=1 uv run pytest tests/ -m slow --tb=short
 ```
 
-**Note:** si `scripts/` se mantiene, decidir si se trackea o se ignora. Actualmente `git status` muestra `?? scripts/`.
+**Note:** `scripts/` eliminado; `check.sh` ahora vive en la raíz del proyecto.
 
 ---
 
@@ -814,4 +814,4 @@ El plan se considera completado cuando:
 2. **Formato de artifacts fase 1:** serializar `ResultadoTemas` completo puede requerir serializers para `Segmento`, `Oracion` y scores. Implementar mínimo necesario para resume antes de embellecer.
 3. **Sampling en LLM:** para clasificación determinista, recomiendo `do_sample=False`. Si el usuario prefiere variabilidad controlada, fijar seed y registrar decoding config en provenance.
 4. **Cookies YouTube:** no incorporar cookies/browser auth sin autorización explícita del usuario.
-5. **Scripts sin trackear:** revisar `scripts/` antes de commits; decidir track/ignore.
+5. **Scripts:** `scripts/` eliminado (run_pipeline.py obsoleto); `check.sh` promocionado a la raíz.

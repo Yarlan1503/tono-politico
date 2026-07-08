@@ -53,6 +53,9 @@ Thumbs.db
 # Whisper models (se descargan automáticamente)
 *.pt
 
+# Codegraph index (local)
+.codegraph/
+
 # Agent docs (local only)
 AGENTS.md
 
