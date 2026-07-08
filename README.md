@@ -18,15 +18,16 @@ Herramienta NLP para analizar el tono de actores políticos mexicanos a partir d
 
 | Componente | Estado | Tests | Salida |
 |---|---:|---:|---|
-| 1. Ingesta | ✅ Completo | 47 | `list[VideoTranscript]` |
-| 1.5 Diarización / actor | ✅ Completo | 62 | `list[VideoTranscript]` (filtrado) |
+| 1. Ingesta | ✅ Completo | 56 | `list[VideoTranscript]` |
+| 1.5 Diarización / actor | ✅ Completo | 88 | `list[VideoTranscript]` (filtrado) |
 | 2. Segmentación | ✅ Completo | 35 | `list[Segmento]` |
-| 3. Temas | ✅ Completo | 11 | `ResultadoTemas` |
+| 3. Temas | ✅ Completo | 21 | `ResultadoTemas` |
 | 4. Filtrado | ✅ Completo | 5 | `ResultadoFiltrado` |
-| 5. Tono | ✅ Completo | 61 | `ResultadoTono` |
+| 5. Tono | ✅ Completo | 65 | `ResultadoTono` |
 | 6. Salida | ✅ Completo | 35 | `InformeTono` |
+| pipeline/config/main | ✅ Completo | 49 | `RunResult`, `Config` |
 
-Verificación local: `337 passed` (`-m "not slow"`, 5 slow deselected), `ruff check` limpio y `ty check` limpio.
+Verificación local: `358 passed` (`-m "not slow"`, 5 slow deselected), `ruff check` limpio y `ty check` limpio.
 
 Gate canónico: `bash check.sh` (ruff + ty + pytest). Con modelos lentos: `RUN_SLOW=1 bash check.sh`.
 
@@ -73,7 +74,7 @@ El pipeline no asume que todo el audio pertenece al actor. Un componente de diar
 - **Criterio de matching:** distancia coseno contra perfil de voz, thresholds 0.5 (aceptar) / 0.7 (rechazar).
 - **Criterio de alineación:** midpoint temporal del segmento dentro del turno del actor.
 - **Política de ambigüedad:** si el match cae en zona ambigua (0.5–0.7), se descarta como otro speaker.
-- **Smoke real:** 3 videos validados con distancias 0.075–0.131, margen amplio bajo el umbral 0.5.
+- **Smoke real Fase 1:** 7/7 videos de Play-PoliTest procesados (139 segmentos del actor, 2 tópicos descubiertos, 0 omitidos). Distancias 0.075–0.131, margen amplio bajo el umbral 0.5.
 
 ## Componente 5: Tono — arquitectura híbrida
 
@@ -128,10 +129,13 @@ src/tono_politico/
 │   ├── service.py         # DiarizacionService (orquestador + lazy-load via adapter)
 │   ├── adapter.py         # load_pyannote_pipeline (primary/fallback/device/ProgressHook)
 │   ├── diarizacion.py     # diarizar() — pyannote → TurnoOrador[]
-│   ├── perfil_voz.py      # construir_perfil_desde_output() — desde speaker_embeddings público
+│   ├── perfil_voz.py      # construir_perfil_desde_output() — speaker dominante desde speaker_embeddings
 │   ├── matching.py        # distancia_coseno(), clasificar_speaker(), identificar_actor()
 │   ├── alineacion.py      # filtrar_por_actor() — midpoint → segmentos del actor (bisect)
-│   └── models.py          # TurnoOrador, PerfilVozActor, SpeakerMatch
+│   ├── transcripcion_actor.py  # transcribir_turnos_actor — turnos → ActorTranscript
+│   ├── whisper_clip.py    # WhisperFfmpegClipTranscriber — ffmpeg + Whisper por clip
+│   ├── actor_transcript.py     # Serialización JSON actor_transcript.v1
+│   └── models.py          # TurnoOrador, PerfilVozActor, SpeakerMatch, ActorTranscript, AsrMetadata
 ├── segmentacion/          # Componente 2 ✅
 │   ├── service.py         # SegmentacionService
 │   ├── sentencias.py      # spaCy nlp.pipe → Oracion[]
@@ -314,8 +318,8 @@ informe = svc.procesar(resultado_tono)
 
 ## Documentación técnica
 
-- [Componente 1: Ingesta](docs/componente-1-ingesta.md)
-- [Componente 1.5: Diarización y actor](docs/componente-1-5-diarizacion.md)
+- [Componente 1: Ingesta](docs/componente-ingesta.md)
+- [Componente 1.5: Diarización y actor](docs/componente-diarizacion.md)
 - [Componente 2: Segmentación](docs/componente-2-segmentacion.md)
 - [Componente 3: Temas](docs/componente-3-temas.md)
 - [Componente 4: Filtrado](docs/componente-4-filtrado.md)

@@ -22,7 +22,7 @@ Estado actual: **ya existe `main.py`** que lee automáticamente `config/config.y
 
 | Sección YAML | Service / módulo | Estado | Notas |
 |---|---|---:|---|
-| `project` | defaults globales | referencia | `data_dir`, `output_dir`, `idioma`, `random_state`. |
+| `project` | defaults globales | referencia | `data_dir`, `idioma`, `random_state`. |
 | `ingesta` | `IngestaService` | ✅ | Usa `project.data_dir`; configura `whisper_model`, `idioma`. |
 | `diarizacion` | `DiarizacionService` | ✅ | pyannote community-1, perfil de voz temporal, política de ambigüedad y salida actor-only. |
 | `segmentacion` | `SegmentacionService` | ✅ | spaCy, percentil de breakpoints y guardrails. |
@@ -36,7 +36,8 @@ Estado actual: **ya existe `main.py`** que lee automáticamente `config/config.y
 ```yaml
 project:
   data_dir: "data"
-  output_dir: "output"
+  idioma: "es"
+  random_state: 42
 
 ingesta:
   whisper_model: "large-v3-turbo"
@@ -93,17 +94,19 @@ DiarizacionService(
 
 Notas:
 
-- **Implementado:** 62 tests en verde cubren models, perfil de voz, diarización, alineación, matching y service.
+- **Implementado:** 88 tests en verde (10 archivos) cubren models, adapter, perfil de voz, diarización, alineación, matching, service, transcripción actor-only, clip transcriber Whisper+ffmpeg y serialización actor_transcript.v1.
 - El pipeline primary es `pyannote/speaker-diarization-community-1`; si falla por acceso/gating/model-not-found, el adapter intenta el fallback local validado `pyannote-community/speaker-diarization-community-1`.
-- `device: "auto"` usa CUDA si está disponible y CPU si no; las llamadas largas usan `ProgressHook` cuando pyannote lo expone.
+- `device: "auto"` usa CUDA si está disponible y CPU si no; las llamadas largas usan `ProgressHook` cuando pyannote lo expone. El adapter usa `torch.device` (no `str` — fix para pyannote 4.x).
 - Los embeddings por speaker salen de `output.speaker_embeddings` del propio pipeline; no se carga un modelo separado de embeddings.
+- El perfil de voz se construye desde `output.speaker_embeddings` seleccionando el **speaker dominante** (mayor duración total en el audio de referencia).
 - La playlist de pruebas actual es `Play-PoliTest` (`PLE9Zk7g9R__M`) y contiene solo intervenciones de Lilly Téllez.
 - Para el perfil de voz se toma **un solo audio de referencia** de la misma playlist: `su9nURIj9XQ`.
 - El perfil de voz se cachea únicamente durante la ejecución del pipeline; no se persiste como artefacto estable.
 - Si el match de speaker contra el perfil es ambiguo, ese speaker se trata como no-actor y el pipeline continúa.
 - La salida hacia Segmentación debe contener únicamente texto atribuido al actor objetivo.
+- **Transcripción por clips:** `WhisperFfmpegClipTranscriber` recorta cada turno pyannote a un WAV temporal normalizado (mono 16 kHz PCM) con ffmpeg, lo transcribe con Whisper (`word_timestamps=False`), y reubica los timestamps al timeline absoluto. Ver `docs/componente-diarizacion.md` para detalles.
 - **Thresholds calibrados con research + smoke real:** `umbral_match=0.5` y `umbral_ambiguo=0.7` basados en el clustering threshold de pyannote 3.1 (0.7046), distribuciones VoxCeleb/SpeechBrain y smoke Play-PoliTest con distancias 0.075–0.131.
-- **Smoke test completado:** 3 videos reales de Play-PoliTest aceptados con margen amplio bajo `umbral_match=0.5`; `71GicqtYqpQ` sigue como fallo controlado de descarga 403.
+- **Smoke test Fase 1 completado:** 7/7 videos de Play-PoliTest procesados con éxito (139 segmentos del actor, 2 tópicos descubiertos, 0 videos omitidos).
 
 ## Componente 2: `segmentacion`
 
@@ -169,7 +172,7 @@ TemasService(
 Notas:
 
 - `umap`, `hdbscan` y `bertopic` reflejan defaults internos de `descubrir_temas()`.
-- Si `len(segmentos) < min_topic_size`, no se inventan clusters: todos los segmentos quedan como outlier `-1`.
+- Si `len(segmentos) < min_topic_size`, todos los segmentos se asignan a un único tópico controlado `id=0` (no outlier `-1`), para que el pipeline pueda filtrarlos y analizarlos.
 
 ## Componente 4: `filtrado`
 

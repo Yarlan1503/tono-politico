@@ -42,9 +42,9 @@ from pathlib import Path
 from tono_politico.ingesta import IngestaService
 
 svc = IngestaService(
-    data_dir=Path("data"),     # raíz del cache local
-    whisper_model="large-v3-turbo",  # modelo de Whisper
-    idioma="es",               # idioma forzado para transcripción
+    data_dir=Path("data"),          # raíz del cache local
+    whisper_model="large-v3-turbo", # modelo de Whisper
+    idioma="es",                    # idioma forzado para transcripción
 )
 
 transcripciones: list[VideoTranscript] = svc.procesar(
@@ -70,12 +70,15 @@ transcripciones: list[VideoTranscript] = svc.procesar(
 
 1. `obtener_info_playlist(url)` → metadata de la playlist
 2. `verificar_cache_transcripciones(nombre, videos, data_dir)` → qué ya está listo
-3. Para los faltantes:
+3. Para los faltantes (`_procesar_faltantes`):
    - `verificar_cache_videos(nombre, faltantes, data_dir)` → qué audios ya existen
    - `descargar_audio(video, nombre, data_dir)` → yt-dlp para los que faltan
-   - `transcribir(audio, modelo, idioma)` → Whisper
+   - `transcribir(ruta_audio, modelo, idioma)` → Whisper
    - `guardar_transcripcion(transcript, nombre, data_dir)` → persistir
 4. `cargar_transcripcion(ruta)` para todos → `list[VideoTranscript]`
+5. Devuelve en el orden original de la playlist
+
+Los videos cuya descarga falla se omiten sin crash — `descargar_audio` devuelve `None` y se registran con `logger.warning`.
 
 ### `playlist.py` — Metadata
 
@@ -85,11 +88,11 @@ Usa `yt-dlp --flat-playlist --extractor-args youtubetab:approximate_date -j` par
 - Nombre de la playlist (sanitizado para directorios)
 - Lista de videos con: `id`, `titulo`, `url`, `duracion`, `fecha` (YYYYMMDD)
 
-Los videos privados, eliminados o inaccesibles se filtran automáticamente.
+Los videos privados, eliminados o inaccesibles se filtran automáticamente. Timeout de 120s.
 
 **`sanitizar_nombre_directorio(nombre) → str`**
 
-Reemplaza caracteres problemáticos, colapsa espacios, elimina guiones bajos extremos. Fallback: `"playlist_sin_nombre"`.
+Reemplaza caracteres problemáticos (`<>:"/\|?*` y bytes de control), colapsa espacios a `_`, elimina guiones bajos extremos. Fallback: `"playlist_sin_nombre"`.
 
 ### `audio.py` — Descarga y cache
 
@@ -97,15 +100,29 @@ Reemplaza caracteres problemáticos, colapsa espacios, elimina guiones bajos ext
 
 Revisa `videos-<playlist>/` y compara archivos `.wav` contra los video_ids.
 
-**`descargar_audio(video, nombre, base_dir) → Path`**
+**`descargar_audio(video, nombre, base_dir, archive_path) → Path | None`**
 
-Ejecuta `yt-dlp -x --audio-format wav -f bestaudio/best` y guarda como `<video_id>.wav`.
+Wrapper legacy que delega en `descargar_audio_result` y devuelve `Path | None`.
+
+**`descargar_audio_result(video, nombre, base_dir, archive_path) → DownloadResult`**
+
+Descarga solo el audio de un video como WAV. Devuelve un `DownloadResult` estructurado — no crashea, los fallos quedan registrados en el resultado.
+
+Comando yt-dlp:
+```
+yt-dlp -x --audio-format wav -f bestaudio/best -o <destino> --no-warnings --retries 10 [url]
+```
+
+Parámetros clave:
+- `archive_path` (opcional): si se provee, se pasa `--download-archive` a yt-dlp para evitar redescargar videos ya bajados en corridas previas.
+- Timeout de 600s por video.
+- Errores estructurados en `DownloadResult` (`ok=False`, `error` con mensaje truncado a 300 char).
 
 ### `transcripcion.py` — Whisper + persistencia
 
 **`transcribir(audio_path, modelo, idioma) → list[SegmentoRaw]`**
 
-Carga Whisper, transcribe con `word_timestamps=True` y `fp16=False` (CPU-friendly). Normaliza la salida a `SegmentoRaw` con:
+Carga Whisper (`import whisper` diferido dentro de la función), transcribe con `word_timestamps=True` y `fp16=False` (CPU-friendly). Normaliza la salida a `SegmentoRaw` con:
 - `texto`: texto limpio sin espacios extremos
 - `t_start` / `t_end`: timestamps en segundos
 - `pausa_antes`: gap acústico `t_start[n] - t_end[n-1]` (primer segmento = 0.0)
@@ -123,6 +140,11 @@ Reconstruye un `VideoTranscript` desde JSON. Lanza `FileNotFoundError` si no exi
 
 Considera válida solo una transcripción cuyo JSON existe, parsea correctamente, y su campo `video_id` coincide. Un JSON corrupto o con ID distinto se trata como faltante.
 
+**Funciones internas de serialización:**
+
+- `_serializar_transcript(transcript) → dict`: convierte `VideoTranscript` a dict JSON-serializable.
+- `_deserializar_transcript(data) → VideoTranscript`: reconstruye desde dict parsed, con defaults seguros para campos faltantes.
+
 ### `cache.py` — Convención de rutas
 
 Todas las funciones reciben `base_dir` opcional (default = `DATA_DIR = Path("data")`):
@@ -136,9 +158,11 @@ ruta_transcripcion(nombre, video_id, base_dir)  # .../transcripciones-<playlist>
 
 ## DTOs
 
-Definidos en `src/tono_politico/models.py` (nivel paquete, compartidos):
+### Compartidos (`src/tono_politico/models.py`)
 
-### `WordTimestamp`
+Definidos a nivel paquete porque `VideoTranscript` sale de Ingesta pero entra a Segmentación y Diarización; `WordTimestamp` se usa para construir `Oracion`.
+
+#### `WordTimestamp`
 
 | Campo | Tipo | Descripción |
 |-------|------|-------------|
@@ -147,7 +171,7 @@ Definidos en `src/tono_politico/models.py` (nivel paquete, compartidos):
 | `end` | `float` | Tiempo de fin (segundos) |
 | `probability` | `float \| None` | Confianza de Whisper |
 
-### `SegmentoRaw`
+#### `SegmentoRaw`
 
 | Campo | Tipo | Descripción |
 |-------|------|-------------|
@@ -157,7 +181,7 @@ Definidos en `src/tono_politico/models.py` (nivel paquete, compartidos):
 | `pausa_antes` | `float` | Gap respecto al segmento anterior |
 | `words` | `list[WordTimestamp]` | Timestamps por palabra |
 
-### `VideoTranscript`
+#### `VideoTranscript`
 
 | Campo | Tipo | Descripción |
 |-------|------|-------------|
@@ -167,9 +191,34 @@ Definidos en `src/tono_politico/models.py` (nivel paquete, compartidos):
 | `fecha` | `str \| None` | Fecha YYYYMMDD |
 | `raw_segments` | `list[SegmentoRaw]` | Segmentos de Whisper |
 
-### `PlaylistInfo` / `VideoInfo`
+#### `VideoInfo`
 
-Metadata de la playlist y videos individuales (id, título, url, duración, fecha).
+| Campo | Tipo | Descripción |
+|-------|------|-------------|
+| `id` | `str` | ID del video de YouTube |
+| `titulo` | `str` | Título del video |
+| `url` | `str` | URL del video |
+| `duracion` | `float` | Duración en segundos |
+| `fecha` | `str \| None` | Fecha YYYYMMDD |
+
+#### `PlaylistInfo`
+
+| Campo | Tipo | Descripción |
+|-------|------|-------------|
+| `nombre` | `str` | Nombre sanitizado de la playlist |
+| `url` | `str` | URL original |
+| `videos` | `list[VideoInfo]` | Videos de la playlist |
+
+### Específicos (`src/tono_politico/ingesta/models.py`)
+
+#### `DownloadResult`
+
+| Campo | Tipo | Descripción |
+|-------|------|-------------|
+| `video_id` | `str` | ID del video de YouTube |
+| `path` | `Path \| None` | Ruta al audio si exitoso, `None` si falló |
+| `ok` | `bool` | `True` si el archivo existe y es válido |
+| `error` | `str \| None` | Mensaje truncado si `ok=False`, `None` si `ok=True` |
 
 ## Formato JSON de transcripción
 
@@ -204,6 +253,7 @@ Metadata de la playlist y videos individuales (id, título, url, duración, fech
 |-------------|-----|
 | `yt-dlp` | Descarga de metadata de playlists y extracción de audio |
 | `openai-whisper` | Transcripción con word timestamps |
+| `ffmpeg` | Backend de audio requerido por Whisper y yt-dlp |
 | CPU | `fp16=False` — no requiere GPU |
 
 ## Decisiones de diseño
@@ -212,3 +262,6 @@ Metadata de la playlist y videos individuales (id, título, url, duración, fech
 - **`base_dir` threaded:** todas las funciones de cache reciben `base_dir` opcional. El service pasa `self.data_dir`. Tests usan `tmp_path` sin mutar globales.
 - **Import diferido de Whisper:** `import whisper` dentro de `transcribir()`, no a nivel módulo. Permite testear sin instalar Whisper.
 - **`pausa_antes` calculada en `transcribir`:** se calcula como `t_start[n] - t_end[n-1]` durante la normalización, no en un paso separado.
+- **Errores estructurados con `DownloadResult`:** las descargas fallidas no crashean el pipeline. `descargar_audio_result` devuelve `ok=False` con mensaje truncado; el service omite el video y continúa.
+- **`--download-archive` opcional:** permite evitar redescargar videos ya bajados en corridas previas cuando se provee `archive_path`.
+- **`--retries 10`:** yt-dlp reintenta hasta 10 veces por video antes de declarar fallo.
