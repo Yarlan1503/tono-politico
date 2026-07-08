@@ -8,12 +8,22 @@ Los módulos internos (diarizacion, perfil_voz, matching, alineacion)
 son la implementación.
 """
 
-from .models import PerfilVozActor, SpeakerMatch, TurnoOrador
+from .models import (
+    ActorTranscript,
+    ActorTranscriptSegment,
+    AsrMetadata,
+    PerfilVozActor,
+    SpeakerMatch,
+    TurnoOrador,
+)
 from .service import DiarizacionService
 
 __all__ = [
     "DiarizacionService",
     "TurnoOrador",
+    "AsrMetadata",
+    "ActorTranscriptSegment",
+    "ActorTranscript",
     "PerfilVozActor",
     "SpeakerMatch",
 ]
