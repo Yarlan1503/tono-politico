@@ -2,6 +2,9 @@
 
 > **Estado:** ✅ Completo · **Tests:** 47
 
+> ⚠️ **Camino legacy.** El camino preferido es [**speech2text**](componente-speech2text.md) (`audio_fetcher` + `speaker_timestamps` + `transcribe_speech` → `ActorTranscript`). Este documento describe Ingesta como aún usa `PipelineRunner` / `main.py`.
+
+
 ## Propósito
 
 Recibe la URL de una playlist de YouTube, descarga el audio de cada video, lo transcribe con Whisper y devuelve transcripciones estructuradas con timestamps por palabra y pausas entre segmentos.

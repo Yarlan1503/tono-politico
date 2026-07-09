@@ -2,6 +2,10 @@
 
 > **Archivo canónico:** `config/config.yaml`
 
+## speech2text (camino preferido)
+
+La API nueva `SpeechToTextService` reutiliza defaults de las secciones `ingesta` (modelo Whisper / idioma) y `diarizacion` (pipeline, umbrales, `referencia_voz.video_id`) hasta renombrar el YAML. Ver [componente-speech2text.md](componente-speech2text.md).
+
 ## Propósito
 
 `config/config.yaml` documenta los defaults acordados para cada componente del pipeline. Es la referencia que debe mantenerse sincronizada con los constructores de los services y con la documentación.

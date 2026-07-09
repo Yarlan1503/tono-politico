@@ -2,6 +2,9 @@
 
 > **Estado:** ✅ Completo · **Tests:** 88 (10 archivos)
 
+> ⚠️ **Camino legacy.** El camino preferido es [**speech2text**](componente-speech2text.md) (`audio_fetcher` + `speaker_timestamps` + `transcribe_speech` → `ActorTranscript`). Este documento describe Diarización como aún usa `PipelineRunner` / `main.py`.
+
+
 ## Propósito
 
 Inserta una etapa entre Ingesta y Segmentación para asegurar que el análisis de tono se aplique solo a las intervenciones del actor político objetivo, aunque el audio contenga varios oradores. Toma `VideoTranscript[]` + audio WAV, ejecuta diarización de pyannote, identifica al actor por embedding de voz, y devuelve `VideoTranscript[]` filtrado — mismo contrato, solo segmentos del actor.

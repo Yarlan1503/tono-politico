@@ -5,21 +5,32 @@ Herramienta NLP para analizar el tono de actores políticos mexicanos a partir d
 ## Pipeline
 
 ```text
-1. Ingesta       YouTube playlist → Whisper large-v3-turbo → transcripciones con timestamps
-1.5 Diarización  pyannote.audio + perfil de voz → texto del actor objetivo
-2. Segmentación  texto del actor → spaCy + embeddings → segmentos semánticos
-3. Temas         segmentos → BERTopic → tópicos y asignaciones
-4. Filtrado      tópico/tema seleccionado → subset relevante
-5. Tono          embeddings + LLM → stance, intensidad, lógica política, sentimiento, estilo, función
-6. Salida        agregación + provenance → JSON + Markdown
+speech2text (nuevo, preferido)
+  audio_fetcher         playlist + .wav (yt-dlp)
+  speaker_timestamps    pyannote exclusive + match actor
+  transcribe_speech     Whisper large-v3-turbo por clip del actor
+        → ActorTranscript (actor_transcript.v1, turn-level)
+
+2. Segmentación   ActorTranscript / texto actor → spaCy + embeddings → Segmento[]
+3. Temas          segmentos → BERTopic → tópicos
+4. Filtrado       tópico/tema → subset
+5. Tono           embeddings + LLM → stance, intensidad, …
+6. Salida         perfil + provenance → JSON + Markdown
+
+Legacy (coexiste hasta cablear PipelineRunner):
+  Ingesta (Whisper full-video) + DiarizacionService (filtrar SegmentoRaw)
 ```
 
 ## Estado actual
 
 | Componente | Estado | Tests | Salida |
 |---|---:|---:|---|
-| 1. Ingesta | ✅ Completo | 56 | `list[VideoTranscript]` |
-| 1.5 Diarización / actor | ✅ Completo | 88 | `list[VideoTranscript]` (filtrado) |
+| **speech2text** | ✅ Implementado + smoke real | **42** | `ActorTranscript` turn-level |
+| · audio_fetcher | ✅ | (suite speech2text) | `AudioVideo` |
+| · speaker_timestamps | ✅ | (suite speech2text) | `list[TurnoOrador]` actor |
+| · transcribe_speech | ✅ | (suite speech2text) | `ActorTranscript` |
+| 1. Ingesta (legacy) | ✅ Completo | 56 | `list[VideoTranscript]` |
+| 1.5 Diarización (legacy) | ✅ Completo | 88 | `list[VideoTranscript]` filtrado |
 | 2. Segmentación | ✅ Completo | 35 | `list[Segmento]` |
 | 3. Temas | ✅ Completo | 21 | `ResultadoTemas` |
 | 4. Filtrado | ✅ Completo | 5 | `ResultadoFiltrado` |
@@ -27,7 +38,9 @@ Herramienta NLP para analizar el tono de actores políticos mexicanos a partir d
 | 6. Salida | ✅ Completo | 35 | `InformeTono` |
 | pipeline/config/main | ✅ Completo | 49 | `RunResult`, `Config` |
 
-Verificación local: `358 passed` (`-m "not slow"`, 5 slow deselected), `ruff check` limpio y `ty check` limpio.
+Verificación local: **`400 passed`** (`-m "not slow"`, 5 slow deselected; **405** collected). `ruff check` / `ty check` limpios en el camino principal.
+
+**Smoke speech2text (Play-PoliTest):** 7/7 videos, 195 turnos del actor, 0 errores (~38 min). Artefactos en `output/speech2text-smoke/`.
 
 Gate canónico: `bash check.sh` (ruff + ty + pytest). Con modelos lentos: `RUN_SLOW=1 bash check.sh`.
 
@@ -63,18 +76,31 @@ uv run python main.py \
 
 **`--resume`:** reutiliza el artefacto `fase1-topicos.json` de una corrida anterior para saltar Ingesta/Diarización/Segmentación/Temas y ejecutar solo Fase 2 sobre un tópico diferente. Cada corrida deja `output/runs/<run_id>/manifest.json` con status, videos procesados/omitidos, fases y timings.
 
-## Componente 1.5: Diarización — detección del actor objetivo
+## speech2text — audio → texto del actor
 
-El pipeline no asume que todo el audio pertenece al actor. Un componente de diarización identifica quién habla cuándo usando Community-1 de pyannote, compara cada speaker contra un perfil de voz del actor objetivo, y filtra las transcripciones para conservar solo las intervenciones del actor.
+Camino preferido para pasar de playlist a texto del actor (sin Whisper full-video):
 
-- **Modelo de diarización vigente:** primary oficial `pyannote/speaker-diarization-community-1`; fallback local validado `pyannote-community/speaker-diarization-community-1` si el primary falla por acceso/gating/model-not-found.
-- **Device:** `auto` mueve pyannote a CUDA cuando está disponible; si no, usa CPU.
-- **Progreso:** las llamadas largas usan `ProgressHook` cuando la versión instalada de pyannote lo expone.
-- **Embeddings de voz:** `output.speaker_embeddings` del propio pipeline Community-1; no se carga un modelo separado de embeddings.
-- **Criterio de matching:** distancia coseno contra perfil de voz, thresholds 0.5 (aceptar) / 0.7 (rechazar).
-- **Criterio de alineación:** midpoint temporal del segmento dentro del turno del actor.
-- **Política de ambigüedad:** si el match cae en zona ambigua (0.5–0.7), se descarta como otro speaker.
-- **Smoke real Fase 1:** 7/7 videos de Play-PoliTest procesados (139 segmentos del actor, 2 tópicos descubiertos, 0 omitidos). Distancias 0.075–0.131, margen amplio bajo el umbral 0.5.
+```text
+discover(playlist) → VideoMeta[]
+ensure_perfil(video_ref)
+por video: fetch_one → speaker_timestamps → transcribe_speech
+         → ActorTranscript (actor_transcript.v1)
+```
+
+- **audio_fetcher:** yt-dlp playlist + `.wav` (cache en `data/<playlist>/videos-…/`).
+- **speaker_timestamps:** Community-1 `exclusive_speaker_diarization` + match coseno al perfil (0.5 / 0.7).
+- **transcribe_speech:** Whisper `large-v3-turbo` **solo en clips del actor**, `word_timestamps=False`.
+- **Smoke real:** Play-PoliTest **7/7**, **195** turnos, ~1959 palabras, 0 errores (`scripts_smoke_speech2text.py`).
+- Doc: [`docs/componente-speech2text.md`](docs/componente-speech2text.md).
+
+> **Nota:** `PipelineRunner` / `main.py` aún orquestan Ingesta + DiarizacionService legacy. speech2text está listo vía API programática y smoke; el cableado al runner es el siguiente paso de integración.
+
+### Diarización / actor (detalle técnico, compartido)
+
+- **Modelo:** primary `pyannote/speaker-diarization-community-1`; fallback `pyannote-community/speaker-diarization-community-1`.
+- **Device:** `auto` (CUDA si hay, si no CPU) + `ProgressHook` cuando existe.
+- **Embeddings:** `output.speaker_embeddings` del pipeline (sin modelo aparte).
+- **Match:** distancia coseno; ambiguo 0.5–0.7 → descartar.
 
 ## Componente 5: Tono — arquitectura híbrida
 
@@ -105,7 +131,7 @@ prototipos textuales en español. El LLM razona stance con actor + tema + few-sh
 - **Config encapsulada:** los hiperparámetros viven en el constructor del service. `main.py` los carga desde `config/config.yaml`.
 - **Helpers puros:** la lógica interna se mantiene en funciones testeables.
 - **Lazy loading:** Whisper, spaCy, BERTopic, pyannote y modelos LFM2.5 se cargan solo cuando se usan.
-- **ASR default:** `large-v3-turbo` por balance calidad/velocidad; mantiene `word_timestamps=True` para alinear con speaker turns.
+- **ASR default (speech2text):** `large-v3-turbo` en **clips del actor** con `word_timestamps=False` (timestamps de turno desde pyannote). El camino legacy de Ingesta aún usa Whisper full-video con word timestamps.
 - **Diarización implementada:** primary `pyannote/speaker-diarization-community-1`, fallback `pyannote-community/speaker-diarization-community-1`, `device=auto` y `ProgressHook` si está disponible; los embeddings por speaker salen de `output.speaker_embeddings` del pipeline. El actor se identifica con un perfil de voz cacheado solo durante la ejecución. Si el match es ambiguo, se descarta como otro speaker y el pipeline continúa.
 - **DTOs compartidos vs locales:** `src/tono_politico/models.py` contiene DTOs compartidos por más de un componente. Los DTOs específicos viven dentro de su componente.
 - **Embeddings compartidos:** Segmentación, Temas y Tono usan `LiquidAI/LFM2.5-Embedding-350M`.
@@ -115,17 +141,23 @@ prototipos textuales en español. El LLM razona stance con actor + tema + few-sh
 
 ```text
 src/tono_politico/
-├── models.py              # DTOs compartidos
+├── models.py              # DTOs compartidos (legacy + slim pendientes)
 ├── protocol.py            # ComponenteProtocol
 ├── config.py              # Config tipada (dataclasses) + load_config
-├── ingesta/               # Componente 1 ✅
+├── speech2text/           # Preferido: audio → ActorTranscript ✅
+│   ├── service.py         # SpeechToTextService (orquestador)
+│   ├── requisitos.md      # checklist + viabilidad
+│   ├── audio_fetcher/     # playlist + descarga .wav
+│   ├── speaker_timestamps/# pyannote + match actor
+│   └── transcribe_speech/ # Whisper clips actor-only
+├── ingesta/               # Componente 1 legacy ✅ (Whisper full-video)
 │   ├── service.py         # IngestaService
 │   ├── playlist.py        # metadata de playlists vía yt-dlp
 │   ├── audio.py           # descarga/cache de audios .wav (yt-dlp + --download-archive)
 │   ├── transcripcion.py   # Whisper + JSON
 │   ├── models.py          # DownloadResult (errores estructurados)
 │   └── cache.py           # rutas centralizadas
-├── diarizacion/           # Componente 1.5 ✅
+├── diarizacion/           # Componente 1.5 legacy ✅ (stack reusado por speech2text)
 │   ├── service.py         # DiarizacionService (orquestador + lazy-load via adapter)
 │   ├── adapter.py         # load_pyannote_pipeline (primary/fallback/device/ProgressHook)
 │   ├── diarizacion.py     # diarizar() — pyannote → TurnoOrador[]
@@ -217,39 +249,41 @@ uv run ruff check src/ tests/ main.py && uv run ty check && uv run pytest tests/
 
 ## Uso programático por componente
 
-### Componente 1: Ingesta
+### speech2text (preferido)
 
 ```python
 from pathlib import Path
+from tono_politico.speech2text import SpeechToTextService
 
-from tono_politico.ingesta import IngestaService
-
-svc = IngestaService(
+svc = SpeechToTextService(
     data_dir=Path("data"),
+    actor="Lilly Téllez",
+    video_ref_id="su9nURIj9XQ",
     whisper_model="large-v3-turbo",
     idioma="es",
 )
 
-transcripciones = svc.procesar("https://youtube.com/playlist?list=...")
+playlist, metas = svc.discover("https://youtube.com/playlist?list=...")
+svc.ensure_perfil(playlist.nombre, metas)
+
+transcripts = []
+for meta in metas:
+    tx = svc.procesar_one(meta, playlist.nombre)
+    if tx is not None:
+        transcripts.append(tx)
+# transcripts: list[ActorTranscript]  (actor_transcript.v1)
 ```
 
-### Componente 1.5: Diarización
+Smoke end-to-end sobre Play-PoliTest:
 
-```python
-from tono_politico.diarizacion import DiarizacionService
-
-svc = DiarizacionService(
-    actor="Lilly Téllez",
-    video_ref_id="su9nURIj9XQ",
-    umbral_match=0.5,
-    umbral_ambiguo=0.7,
-)
-
-# Filtra transcripciones conservando solo intervenciones del actor
-transcripciones_actor = svc.procesar(transcripciones, nombre_playlist="Play-PoliTest")
+```bash
+uv run python scripts_smoke_speech2text.py
+# → output/speech2text-smoke/summary.json + actor_transcripts/
 ```
 
 ### Componente 2: Segmentación
+
+> Hoy entra `list[VideoTranscript]` (legacy). Adaptación a `ActorTranscript` pendiente antes de descartar el camino viejo.
 
 ```python
 from tono_politico.segmentacion import SegmentacionService
@@ -262,7 +296,7 @@ svc = SegmentacionService(
     max_palabras=150,
 )
 
-segmentos = svc.procesar(transcripciones_actor)
+segmentos = svc.procesar(transcripciones_actor)  # legacy VideoTranscript[]
 ```
 
 ### Componente 3: Temas
@@ -318,8 +352,9 @@ informe = svc.procesar(resultado_tono)
 
 ## Documentación técnica
 
-- [Componente 1: Ingesta](docs/componente-ingesta.md)
-- [Componente 1.5: Diarización y actor](docs/componente-diarizacion.md)
+- [**speech2text** (preferido)](docs/componente-speech2text.md)
+- [Componente 1: Ingesta (legacy)](docs/componente-ingesta.md)
+- [Componente 1.5: Diarización (legacy / stack interno)](docs/componente-diarizacion.md)
 - [Componente 2: Segmentación](docs/componente-2-segmentacion.md)
 - [Componente 3: Temas](docs/componente-3-temas.md)
 - [Componente 4: Filtrado](docs/componente-4-filtrado.md)
