@@ -55,12 +55,16 @@ def transcribir_turnos_actor(
     idioma: str = "es",
     padding_segundos: float = 0.0,
     duracion_audio: float | None = None,
+    fecha: str | None = None,
 ) -> ActorTranscript:
     """Transcribe turnos pyannote atribuidos al actor objetivo.
 
     El padding solo modifica el clip enviado al transcriptor. El contrato
     persistible conserva los límites originales del turno pyannote como
     ``source_turn_*`` y reubica los timestamps del ASR en el timeline absoluto.
+
+    ``fecha`` (YYYYMMDD desde VideoMeta/AudioVideo) se copia al ActorTranscript
+    para análisis temporal en discursive_approach.
     """
     ruta_audio = Path(audio_path)
     _validar_entrada(ruta_audio, turnos_actor, video_id, padding_segundos)
@@ -86,6 +90,7 @@ def transcribir_turnos_actor(
         scope=SCOPE_ACTOR_ONLY,
         asr=AsrMetadata(provider=ASR_PROVIDER, model=modelo, language=idioma),
         segments=segments,
+        fecha=fecha,
     )
 
 

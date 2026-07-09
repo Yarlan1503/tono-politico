@@ -48,7 +48,7 @@ def test_video_meta_es_frozen() -> None:
         duracion=1.0,
     )
     with pytest.raises(AttributeError):
-        meta.titulo = "otro"  # type: ignore[misc]
+        setattr(meta, "titulo", "otro")
 
 
 def test_audio_video_fields(tmp_path: Path) -> None:
@@ -98,7 +98,7 @@ def test_audio_video_es_frozen(tmp_path: Path) -> None:
         duracion=1.0,
     )
     with pytest.raises(AttributeError):
-        audio.titulo = "otro"  # type: ignore[misc]
+        setattr(audio, "titulo", "otro")
 
 
 def test_download_result_ok(tmp_path: Path) -> None:

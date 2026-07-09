@@ -57,9 +57,7 @@ class TestObtenerInfoPlaylist:
             "tono_politico.speech2text.audio_fetcher.playlist.subprocess.run",
             return_value=mock_result,
         ):
-            playlist, metas = obtener_info_playlist(
-                "https://youtube.com/playlist?list=FAKE"
-            )
+            playlist, metas = obtener_info_playlist("https://youtube.com/playlist?list=FAKE")
 
         assert playlist.nombre == "Test_Playlist"
         assert playlist.videos == []  # VideoMeta fuera de PlaylistInfo

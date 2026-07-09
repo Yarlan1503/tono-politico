@@ -71,9 +71,7 @@ class TestAudioFetcherService:
         svc = AudioFetcherService(data_dir=tmp_path)
         with patch(
             "tono_politico.speech2text.audio_fetcher.audio.subprocess.run",
-            return_value=subprocess.CompletedProcess(
-                ["yt-dlp"], 1, stdout="", stderr="fail"
-            ),
+            return_value=subprocess.CompletedProcess(["yt-dlp"], 1, stdout="", stderr="fail"),
         ):
             assert svc.fetch_one(_meta("x"), "P") is None
 

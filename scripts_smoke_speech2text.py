@@ -21,6 +21,7 @@ import traceback
 from dataclasses import asdict, is_dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from tono_politico.speech2text import SpeechToTextService
 
@@ -73,7 +74,7 @@ def main() -> int:
         device="auto",
     )
 
-    per_video: list[dict[str, object]] = []
+    per_video: list[dict[str, Any]] = []
     transcripts_ok = 0
     errors: list[str] = []
 

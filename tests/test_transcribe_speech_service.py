@@ -70,6 +70,7 @@ class TestTranscribeSpeechService:
         assert len(tx.segments) == 1
         assert "discurso" in tx.segments[0].text
         assert fake.calls == [(1.0, 3.0)]
+        assert tx.fecha == "20260101"
 
     def test_sin_texto_none(self, tmp_path: Path) -> None:
         svc = TranscribeSpeechService(transcriptor=FakeTranscriber(""))

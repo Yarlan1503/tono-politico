@@ -32,21 +32,28 @@ def _segment_to_dict(segment: ActorTranscriptSegment) -> dict[str, Any]:
 
 
 def _segment_from_dict(data: dict[str, Any]) -> ActorTranscriptSegment:
-    source_turn = data["source_turn"]
+    if "source_turn" in data:
+        source_turn = data["source_turn"]
+        source_start = source_turn["t_start"]
+        source_end = source_turn["t_end"]
+    else:
+        # contrato plano (smokes / variantes de serialización)
+        source_start = data.get("source_turn_start", data["t_start"])
+        source_end = data.get("source_turn_end", data["t_end"])
     return ActorTranscriptSegment(
         text=data["text"],
         t_start=data["t_start"],
         t_end=data["t_end"],
         speaker=data["speaker"],
-        source_turn_start=source_turn["t_start"],
-        source_turn_end=source_turn["t_end"],
+        source_turn_start=source_start,
+        source_turn_end=source_end,
         word_count=data["word_count"],
     )
 
 
 def actor_transcript_to_dict(transcript: ActorTranscript) -> dict[str, Any]:
     """Serializa ``ActorTranscript`` al contrato JSON actor_transcript.v1."""
-    return {
+    data: dict[str, Any] = {
         "schema_version": transcript.schema_version,
         "video_id": transcript.video_id,
         "actor": transcript.actor,
@@ -58,6 +65,9 @@ def actor_transcript_to_dict(transcript: ActorTranscript) -> dict[str, Any]:
         },
         "segments": [_segment_to_dict(segment) for segment in transcript.segments],
     }
+    if transcript.fecha is not None:
+        data["fecha"] = transcript.fecha
+    return data
 
 
 def actor_transcript_to_json(transcript: ActorTranscript) -> str:
@@ -84,6 +94,7 @@ def actor_transcript_from_json(json_str: str) -> ActorTranscript:
             language=asr["language"],
         ),
         segments=[_segment_from_dict(segment) for segment in data.get("segments", [])],
+        fecha=data.get("fecha"),
     )
 
 

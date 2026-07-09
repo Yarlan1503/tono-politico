@@ -1,101 +1,112 @@
-# Defaults del proyecto Tono Político.
+# Contrato canónico de ejecución para Tono Político.
 #
-# Este archivo es la referencia viva de configuración para los services.
-# Estado actual: main.py lee este YAML y construye los services con estos
-# defaults; los services siguen siendo configurables por constructor.
+# Schema nuevo: main.py puede ejecutar este archivo directamente con:
+#   uv run python main.py --config config/config.yaml
+#   uv run python main.py --config config/config.yaml --dry-run
+#   uv run python main.py --config config/config.yaml --validate-config
+#
+# El path legacy con flags (--playlist/--topico/--resume/--discursive) sigue vivo
+# temporalmente, pero el control granular del path preferido vive aquí.
+
+schema_version: "tono-politico.run.v1"
+
+run:
+  id: null
+  stages: [speech2text, argument_shape, topics_cluster, topics_approach]
+  resume: true
+  overwrite: false
+  keep_cache: false
+  fail_fast: false
+  max_videos: null
+  only_video_ids: []
+
+input:
+  playlist_url: "https://www.youtube.com/playlist?list=PLE9Zk7g9R__M"
+  actor_transcripts_dir: null
+  argumentos_path: null
+  temas_path: null
+  enfoques_path: null
+
+output:
+  base_dir: "output"
+  run_dir: null
+  persist_resolved_config: true
+  persist_manifest: true
 
 project:
   data_dir: "data"
   idioma: "es"
   random_state: 42
 
-# Componente 1: Ingesta — YouTube playlist → Whisper → VideoTranscript[]
-# Usa project.data_dir como directorio único de datos runtime.
-ingesta:
-  whisper_model: "large-v3-turbo"
-  idioma: "es"
+speech2text:
+  enabled: true
 
-# Componente 1.5: Diarización / actor — audio + transcript → texto del actor objetivo
-diarizacion:
-  estado: "implementado"
-  pipeline: "pyannote/speaker-diarization-community-1"
-  fallback_pipeline: "pyannote-community/speaker-diarization-community-1"
-  device: "auto"
-  actor_objetivo: "Lilly Téllez"
-  umbral_match: 0.5
-  umbral_ambiguo: 0.7
-  referencia_voz:
-    origen: "misma_playlist"
-    max_audios: 1
-    video_id: "su9nURIj9XQ"
-    url: "https://www.youtube.com/watch?v=su9nURIj9XQ&list=PLE9Zk7g9R__M&index=8"
-    cache: "solo_ejecucion"
-  match_ambiguo: "descartar_como_otro_speaker"
-  salida: "solo_texto_actor"
+  audio_fetcher:
+    enabled: true
+    force_download: false
+    playlist_dir_template: "{playlist}"
+    audio_dir_template: "videos-{playlist}"
 
-# Componente 2: Segmentación — VideoTranscript[] → Segmento[]
-segmentacion:
-  spacy_model: "es_core_news_lg"
-  embedding_model: "LiquidAI/LFM2.5-Embedding-350M"
-  breakpoint_percentile: 95
-  min_oraciones: 2
-  max_oraciones: 8
-  max_palabras: 150
+  speaker_timestamps:
+    enabled: true
+    actor_objetivo: "Lilly Téllez"
+    pipeline: "pyannote/speaker-diarization-community-1"
+    fallback_pipeline: "pyannote-community/speaker-diarization-community-1"
+    device: "auto"
+    umbral_match: 0.5
+    umbral_ambiguo: 0.7
+    match_ambiguo: "descartar_como_otro_speaker"
+    referencia_voz:
+      origen: "misma_playlist"
+      max_audios: 1
+      video_id: "su9nURIj9XQ"
+      url: "https://www.youtube.com/watch?v=su9nURIj9XQ&list=PLE9Zk7g9R__M&index=8"
+      cache: "solo_ejecucion"
 
-# Componente 3: Temas — Segmento[] → ResultadoTemas
-temas:
-  embedding_model: "LiquidAI/LFM2.5-Embedding-350M"
-  min_topic_size: 3
-  n_neighbors: 10
-  n_components: 5
-  umap:
-    metric: "cosine"
-    random_state: 42
-  hdbscan:
-    min_samples: 1
-    metric: "euclidean"
-    cluster_selection_method: "eom"
-  bertopic:
-    language: "spanish"
-    calculate_probabilities: true
-    verbose: false
+  transcribe_speech:
+    enabled: true
+    whisper_model: "large-v3-turbo"
+    idioma: "es"
+    word_timestamps: false
+    force_retranscribe: false
+    skip_existing_transcripts: true
 
-# Componente 4: Filtrado — ResultadoTemas → ResultadoFiltrado
-filtrado:
-  min_relevancia: 0.35
-  incluir_outliers: false
+discursive_approach:
+  enabled: true
 
-# Componente 5: Tono — ResultadoFiltrado → ResultadoTono
-# Arquitectura híbrida: embeddings para dimensiones multi-label + LLM para stance.
-tono:
-  embedding_model: "LiquidAI/LFM2.5-Embedding-350M"
-  llm_model: "LiquidAI/LFM2.5-1.2B-Instruct"
-  device: "cpu"
+  input:
+    source: "previous_stage" # previous_stage | actor_transcripts_dir
+    actor_transcripts_dir: null
 
-  # Stance (vía LLM con actor + tema + few-shot balanceado)
-  stance_labels: ["apoyo", "rechazo"]
+  argument_shape:
+    enabled: true
+    force: false
+    spacy_model: "es_core_news_lg"
+    embedding_model: "LiquidAI/LFM2.5-Embedding-350M"
+    breakpoint_percentile: 95
+    min_oraciones: 2
+    max_oraciones: 8
+    max_palabras: 150
 
-  # Intensidad antagónica (vía embeddings, 5 prototipos escalonados 1-5)
-  intensidad_niveles: 5
+  topics_cluster:
+    enabled: true
+    force: false
+    embedding_model: "LiquidAI/LFM2.5-Embedding-350M"
+    min_topic_size: 3
+    n_neighbors: 10
+    n_components: 5
+    umap:
+      metric: "cosine"
+      random_state: 42
+    hdbscan:
+      min_samples: 1
+      metric: "euclidean"
+      cluster_selection_method: "eom"
+    bertopic:
+      language: "spanish"
+      calculate_probabilities: false
+      verbose: false
 
-  # Lógica política (vía embeddings, multi-label)
-  logica_politica_labels:
-    ["nacionalista", "globalista", "populista", "tecnocrata", "corporativista", "estatista"]
-
-  # Sentimiento (vía embeddings, multi-label)
-  sentimiento_labels:
-    ["esperanza", "angustia", "indignacion", "orgullo", "empatia"]
-
-  # Estilo discursivo (vía embeddings, multi-label)
-  estilo_discursivo_labels:
-    ["directo", "academico", "confrontativo", "conciliador", "catastrofista", "testimonial"]
-
-  # Función discursiva (vía embeddings, multi-label)
-  funcion_discursiva_labels:
-    ["critica", "propuesta", "narrativa_personal"]
-
-# Componente 6: Salida — ResultadoTono → InformeTono (JSON + Markdown)
-salida:
-  formatos: ["json", "markdown"]
-  incluir_provenance: true
-  redondear_scores: 4
+  topics_approach:
+    enabled: true
+    force: false

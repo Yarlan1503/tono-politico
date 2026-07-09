@@ -72,6 +72,10 @@ class TestPhaseRunStatus:
             "filtrado",
             "tono",
             "salida",
+            "speech2text",
+            "argument_shape",
+            "topics_cluster",
+            "topics_approach",
         )
 
 

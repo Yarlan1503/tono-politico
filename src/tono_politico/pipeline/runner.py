@@ -37,6 +37,9 @@ class ServiceFactories:
     build_tono: Callable[[Config, str, str], Any]
     build_salida: Callable[[Config, str | None], Any]
     get_playlist_info: Callable[[str], PlaylistInfo]
+    # Path discursive_approach (opcional; requerido por discover_discursive)
+    build_speech2text: Callable[[Config], Any] | None = None
+    build_discursive: Callable[[Config], Any] | None = None
 
 
 @dataclass
@@ -56,6 +59,8 @@ class PipelineRunner:
     keep_cache: bool = False
     run_id: str | None = None
     last_resultado_temas: ResultadoTemas | None = field(default=None, init=False)
+    last_resultado_enfoques: Any | None = field(default=None, init=False)
+    last_resultado_temas_discursive: Any | None = field(default=None, init=False)
     _active_manifest: RunManifest | None = field(default=None, init=False, repr=False)
 
     def discover(self, playlist_url: str) -> RunResult:
@@ -71,6 +76,67 @@ class PipelineRunner:
             manifest = fase_1.manifest
             manifest_path = self._persistir_manifest(manifest)
             self._persistir_fase1(fase_1.resultado_temas, manifest)
+            return RunResult(manifest=manifest, exit_code=0, manifest_path=manifest_path)
+        except Exception:
+            manifest = self._active_manifest or _failure_manifest(playlist_url)
+            manifest.status = "failed"
+            manifest_path = self._persistir_manifest(manifest)
+            return RunResult(
+                manifest=manifest,
+                exit_code=1,
+                manifest_path=manifest_path,
+            )
+        finally:
+            if manifest is not None:
+                self._limpiar_cache(manifest.playlist_name)
+
+    def discover_discursive(self, playlist_url: str) -> RunResult:
+        """Fase 1 path nuevo: speech2text → argument_shape → topics_cluster → topics_approach.
+
+        Persiste ``discursive-temas.json`` y ``discursive-enfoques.json`` en el run dir.
+        No ejecuta filtrado ni salida (etapas posteriores al umbrella).
+        """
+        self._active_manifest = None
+        manifest: RunManifest | None = None
+        try:
+            if self.factories.build_speech2text is None or self.factories.build_discursive is None:
+                raise RuntimeError(
+                    "discover_discursive requiere factories.build_speech2text y build_discursive"
+                )
+
+            info = self.factories.get_playlist_info(playlist_url)
+            manifest = self._crear_manifest(playlist_url, info)
+
+            svc_s2t = self.factories.build_speech2text(self.cfg)
+            transcripts = self._run_phase(
+                manifest,
+                "speech2text",
+                lambda: svc_s2t.procesar(playlist_url),
+            )
+            manifest.videos = _video_statuses_actor(transcripts)
+
+            svc_disc = self.factories.build_discursive(self.cfg)
+            argumentos = self._run_phase(
+                manifest,
+                "argument_shape",
+                lambda: svc_disc.shape_corpus(transcripts),
+            )
+            resultado_temas = self._run_phase(
+                manifest,
+                "topics_cluster",
+                lambda: svc_disc.cluster(argumentos),
+            )
+            resultado_enfoques = self._run_phase(
+                manifest,
+                "topics_approach",
+                lambda: svc_disc.approaches(resultado_temas),
+            )
+
+            self.last_resultado_temas_discursive = resultado_temas
+            self.last_resultado_enfoques = resultado_enfoques
+
+            manifest_path = self._persistir_manifest(manifest)
+            self._persistir_discursive(resultado_temas, resultado_enfoques, manifest)
             return RunResult(manifest=manifest, exit_code=0, manifest_path=manifest_path)
         except Exception:
             manifest = self._active_manifest or _failure_manifest(playlist_url)
@@ -250,6 +316,34 @@ class PipelineRunner:
         except Exception:
             logger.warning("No se pudo persistir fase1-topicos.json", exc_info=True)
 
+    def _persistir_discursive(
+        self,
+        resultado_temas: Any,
+        resultado_enfoques: Any,
+        manifest: RunManifest,
+    ) -> None:
+        """Persiste artefactos del path discursive_approach."""
+        if manifest.artifacts_dir is None:
+            return
+        try:
+            from tono_politico.discursive_approach.topics_approach.serializacion import (
+                guardar_resultado_enfoques,
+            )
+            from tono_politico.discursive_approach.topics_cluster.serializacion import (
+                guardar_resultado_temas,
+            )
+
+            guardar_resultado_temas(
+                resultado_temas,
+                manifest.artifacts_dir / "discursive-temas.json",
+            )
+            guardar_resultado_enfoques(
+                resultado_enfoques,
+                manifest.artifacts_dir / "discursive-enfoques.json",
+            )
+        except Exception:
+            logger.warning("No se pudo persistir artefactos discursive", exc_info=True)
+
     def analyze_resume(
         self,
         run_dir: str | Path,
@@ -381,6 +475,25 @@ def _video_statuses(
                 diarizado=actor_transcript is not None,
                 segmentos_actor=segmentos_actor,
                 omitido=segmentos_actor == 0,
+            )
+        )
+    return statuses
+
+
+def _video_statuses_actor(transcripts: list[Any]) -> list[VideoRunStatus]:
+    """Estados de video a partir de ActorTranscript (path speech2text)."""
+    statuses: list[VideoRunStatus] = []
+    for transcript in transcripts:
+        n_seg = len(getattr(transcript, "segments", []) or [])
+        statuses.append(
+            VideoRunStatus(
+                video_id=getattr(transcript, "video_id", ""),
+                titulo="",
+                descargado=True,
+                transcrito=n_seg > 0,
+                diarizado=True,
+                segmentos_actor=n_seg,
+                omitido=n_seg == 0,
             )
         )
     return statuses

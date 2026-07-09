@@ -19,6 +19,11 @@ PhaseName: TypeAlias = Literal[
     "filtrado",
     "tono",
     "salida",
+    # path discursive_approach
+    "speech2text",
+    "argument_shape",
+    "topics_cluster",
+    "topics_approach",
 ]
 
 

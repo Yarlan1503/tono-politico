@@ -61,10 +61,14 @@ class TranscribeSpeechService:
             idioma=self.idioma,
             padding_segundos=self.padding_segundos,
             duracion_audio=audio.duracion if audio.duracion > 0 else None,
+            fecha=audio.fecha,
         )
         if not transcript.segments:
             logger.info("Video %s: ASR sin segmentos con texto", audio.video_id)
             return None
+        if transcript.fecha is None and audio.fecha is not None:
+            # defensa en profundidad si el builder omitiera fecha
+            transcript.fecha = audio.fecha
         return transcript
 
     def _get_transcriptor(self) -> Any:

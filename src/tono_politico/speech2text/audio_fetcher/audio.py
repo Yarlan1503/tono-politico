@@ -37,9 +37,7 @@ def verificar_cache_videos(
         else:
             faltantes.append(video)
 
-    logger.info(
-        f"Cache videos: {len(existentes)} existentes, {len(faltantes)} faltantes"
-    )
+    logger.info(f"Cache videos: {len(existentes)} existentes, {len(faltantes)} faltantes")
     return {"existentes": existentes, "faltantes": faltantes}
 
 

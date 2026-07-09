@@ -2,38 +2,47 @@
 
 > **Archivo canónico:** `config/config.yaml`
 
-## speech2text (camino preferido)
-
-La API nueva `SpeechToTextService` reutiliza defaults de las secciones `ingesta` (modelo Whisper / idioma) y `diarizacion` (pipeline, umbrales, `referencia_voz.video_id`) hasta renombrar el YAML. Ver [componente-speech2text.md](componente-speech2text.md).
-
 ## Propósito
 
-`config/config.yaml` documenta los defaults acordados para cada componente del pipeline. Es la referencia que debe mantenerse sincronizada con los constructores de los services y con la documentación.
+`config/config.yaml` es ahora el contrato canónico de ejecución (`schema_version: tono-politico.run.v1`) para el path preferido `speech2text → argument_shape → topics_cluster → topics_approach`.
 
-Estado actual: **ya existe `main.py`** que lee automáticamente `config/config.yaml` (hay loader/CLI). Los services siguen pudiendo configurarse por constructor, pero el pipeline end-to-end se alimenta de este archivo de defaults.
+El CLI nuevo se invoca así:
 
-## Convención general
+```bash
+uv run python main.py --config config/config.yaml
+uv run python main.py --config config/config.yaml --dry-run
+uv run python main.py --config config/config.yaml --validate-config
+```
 
-- Cada componente tiene su propia sección (`ingesta`, `diarizacion`, `segmentacion`, etc.).
-- Los valores implementados deben coincidir con los defaults reales del service correspondiente.
-- Cuando cambie un default en código, actualizar también:
-  - `config/config.yaml`
-  - `README.md`
-  - `AGENTS.md`
-  - `docs/`
+El CLI legacy con `--playlist`, `--discursive`, `--topico` y `--resume` sigue vivo temporalmente, pero el control granular del path nuevo vive en `run.stages` y en las secciones `speech2text` / `discursive_approach`.
 
-## Mapeo de secciones a services
+## Secciones canónicas del schema v1
 
 | Sección YAML | Service / módulo | Estado | Notas |
 |---|---|---:|---|
-| `project` | defaults globales | referencia | `data_dir`, `idioma`, `random_state`. |
-| `ingesta` | `IngestaService` | ✅ | Usa `project.data_dir`; configura `whisper_model`, `idioma`. |
-| `diarizacion` | `DiarizacionService` | ✅ | pyannote community-1, perfil de voz temporal, política de ambigüedad y salida actor-only. |
-| `segmentacion` | `SegmentacionService` | ✅ | spaCy, percentil de breakpoints y guardrails. |
-| `temas` | `TemasService` + `descubrir_temas()` | ✅ MVP | BERTopic, UMAP, HDBSCAN y modelo de embeddings. |
-| `filtrado` | `FiltradoService` + `filtrar_por_topico()` | ✅ MVP | `topico_id` elegido por ejecución, `min_relevancia`, política de outliers. |
-| `tono` | `TonoService` | ✅ | Arquitectura híbrida: embeddings para dimensiones multi-label + LLM para stance. |
-| `salida` | `SalidaService` | ✅ | Exportación JSON + Markdown con provenance. |
+| `schema_version` | loader `execution.config` | ✅ | Debe ser `tono-politico.run.v1`. |
+| `run` | `ExecutionPlan` | ✅ | `stages`, `resume`, `overwrite`, `keep_cache`, `fail_fast`, `max_videos`, `only_video_ids`. |
+| `input` | dependencias iniciales | ✅ | `playlist_url` o artefactos previos (`actor_transcripts_dir`, `argumentos_path`, `temas_path`). |
+| `output` | `ArtifactPaths` | ✅ | `output/<run_id>/manifest.json`, `resolved-config.yaml`, artefactos por stage. |
+| `project` | defaults globales | ✅ | `data_dir`, `idioma`, `random_state`. |
+| `speech2text.audio_fetcher` | `AudioFetcherService` | ✅ | Descarga/cache de `.wav`. |
+| `speech2text.speaker_timestamps` | `SpeakerTimestampsService` | ✅ | pyannote + actor match. |
+| `speech2text.transcribe_speech` | `TranscribeSpeechService` | ✅ | Whisper actor-only por turno. |
+| `discursive_approach.argument_shape` | `ArgumentShapeService` | ✅ | `ActorTranscript[] → Argumento[]`. |
+| `discursive_approach.topics_cluster` | `TopicsClusterService` | ✅ | `Argumento[] → ResultadoTemas`. |
+| `discursive_approach.topics_approach` | `TopicsApproachService` | ✅ | `ResultadoTemas → ResultadoEnfoques`. |
+
+## Secciones legacy
+
+Las secciones legacy (`ingesta`, `diarizacion`, `segmentacion`, `temas`, `filtrado`, `tono`, `salida`) ya no son la fuente canónica del path nuevo. Permanecen documentadas abajo para entender el path legacy y los services originales.
+
+## Política de ejecución stage-based
+
+- `run.stages` es el contrato explícito de qué etapas correr y en qué orden.
+- `run.resume=true` salta etapas cuyo artefacto de salida ya existe; `run.overwrite=true` y los `force` por stage recomputan aunque exista salida.
+- `run.fail_fast=false` permite continuar después de una falla solo si la siguiente etapa todavía tiene dependencias satisfechas por contexto o artefactos externos.
+- `run.max_videos` y `run.only_video_ids` aplican a `speech2text` después del `discover`; el perfil de voz se resuelve con la metadata completa de la playlist.
+- Los `.wav` viven en `data/<playlist>/videos-<playlist>/` como cache runtime: `run.keep_cache=false` los borra al cerrar cada video/ref, `run.keep_cache=true` los conserva para debug.
 
 ## Componente 1: `ingesta`
 

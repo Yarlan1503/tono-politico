@@ -61,6 +61,9 @@ class ActorTranscript:
 
     No persiste timestamps por palabra, probabilidades por palabra ni datos
     verbose de Whisper. Segmentación temática ocurre en componentes posteriores.
+
+    ``fecha`` (YYYYMMDD) se propaga desde VideoMeta para análisis temporal
+    en discursive_approach; None si la metadata no está disponible.
     """
 
     schema_version: str
@@ -69,6 +72,7 @@ class ActorTranscript:
     scope: str
     asr: AsrMetadata
     segments: list[ActorTranscriptSegment]
+    fecha: str | None = None
 
 
 @dataclass

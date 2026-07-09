@@ -5,76 +5,88 @@ Herramienta NLP para analizar el tono de actores políticos mexicanos a partir d
 ## Pipeline
 
 ```text
-speech2text (nuevo, preferido)
-  audio_fetcher         playlist + .wav (yt-dlp)
-  speaker_timestamps    pyannote exclusive + match actor
-  transcribe_speech     Whisper large-v3-turbo por clip del actor
-        → ActorTranscript (actor_transcript.v1, turn-level)
+PATH PREFERIDO (--config config/config.yaml)
+  speech2text
+    audio_fetcher         playlist + .wav (yt-dlp)
+    speaker_timestamps    pyannote exclusive + match actor
+    transcribe_speech     Whisper large-v3-turbo por clip del actor
+          → ActorTranscript (actor_transcript.v1, turn-level, + fecha)
+  discursive_approach
+    argument_shape        1 audio → Argumento[] (spaCy + LFM2.5)
+    topics_cluster        corpus → ResultadoTemas (BERTopic)
+    topics_approach       temas → ResultadoEnfoques (base = Tono + firmas)
+          → [filtrado / salida posteriores — R6 pendiente]
 
-2. Segmentación   ActorTranscript / texto actor → spaCy + embeddings → Segmento[]
-3. Temas          segmentos → BERTopic → tópicos
-4. Filtrado       tópico/tema → subset
-5. Tono           embeddings + LLM → stance, intensidad, …
-6. Salida         perfil + provenance → JSON + Markdown
-
-Legacy (coexiste hasta cablear PipelineRunner):
-  Ingesta (Whisper full-video) + DiarizacionService (filtrar SegmentoRaw)
+PATH LEGACY (default CLI sin --discursive)
+  Ingesta → DiarizacionService → Segmentación → Temas
+  → Filtrado → Tono → Salida
 ```
 
 ## Estado actual
 
-| Componente | Estado | Tests | Salida |
-|---|---:|---:|---|
-| **speech2text** | ✅ Implementado + smoke real | **42** | `ActorTranscript` turn-level |
-| · audio_fetcher | ✅ | (suite speech2text) | `AudioVideo` |
-| · speaker_timestamps | ✅ | (suite speech2text) | `list[TurnoOrador]` actor |
-| · transcribe_speech | ✅ | (suite speech2text) | `ActorTranscript` |
-| 1. Ingesta (legacy) | ✅ Completo | 56 | `list[VideoTranscript]` |
-| 1.5 Diarización (legacy) | ✅ Completo | 88 | `list[VideoTranscript]` filtrado |
-| 2. Segmentación | ✅ Completo | 35 | `list[Segmento]` |
-| 3. Temas | ✅ Completo | 21 | `ResultadoTemas` |
-| 4. Filtrado | ✅ Completo | 5 | `ResultadoFiltrado` |
-| 5. Tono | ✅ Completo | 65 | `ResultadoTono` |
-| 6. Salida | ✅ Completo | 35 | `InformeTono` |
-| pipeline/config/main | ✅ Completo | 49 | `RunResult`, `Config` |
+| Componente | Estado | Tests (aprox.) | Salida |
+|---|---|---:|---|
+| **speech2text** | ✅ + smoke real | 42 | `ActorTranscript` turn-level (+ fecha) |
+| **discursive_approach** | ✅ R1–R5 | **~31** | `ResultadoEnfoques` |
+| · argument_shape | ✅ | (suite discursive) | `Argumento[]` |
+| · topics_cluster | ✅ | (suite discursive) | `ResultadoTemas` |
+| · topics_approach | ✅ | (suite discursive) | `ResultadoEnfoques` (Tono + firmas) |
+| 1. Ingesta (legacy) | ✅ | 56 | `list[VideoTranscript]` |
+| 1.5 Diarización (legacy) | ✅ | 88 | `list[VideoTranscript]` filtrado |
+| 2. Segmentación (legacy path) | ✅ | 35 | `list[Segmento]` |
+| 3. Temas (legacy path) | ✅ | 21 | `ResultadoTemas` |
+| 4. Filtrado | ✅ | 5 | `ResultadoFiltrado` |
+| 5. Tono | ✅ | 65 | `ResultadoTono` (también base de approaches) |
+| 6. Salida | ✅ | 35 | `InformeTono` |
+| execution/main/config | ✅ stage-based config | 30 | `RunConfig`, `ExecutionPlan`, artefactos |
 
-Verificación local: **`400 passed`** (`-m "not slow"`, 5 slow deselected; **405** collected). `ruff check` / `ty check` limpios en el camino principal.
+Verificación local: **`461 passed`** (`-m "not slow"`, 5 slow deselected; **466** collected). Gate: `bash check.sh`.
 
 **Smoke speech2text (Play-PoliTest):** 7/7 videos, 195 turnos del actor, 0 errores (~38 min). Artefactos en `output/speech2text-smoke/`.
 
-Gate canónico: `bash check.sh` (ruff + ty + pytest). Con modelos lentos: `RUN_SLOW=1 bash check.sh`.
-
-Limpieza: `bash clean.sh` (output/ + data/ + caches Python, con confirmación). Filtros: `--output`, `--data`, `--caches`. Dry-run: `--dry-run`. Sin confirmación: `-y`.
+Limpieza: `bash clean.sh` (output/ + data/ + caches Python). Filtros: `--output`, `--data`, `--caches`. Dry-run: `--dry-run`. Sin confirmación: `-y`.
 
 ## Uso del pipeline completo
 
 El pipeline se ejecuta con `main.py`, que lee `config/config.yaml` automáticamente.
 
 ```bash
-# Fase 1: descubrir tópicos
+# Preferido: config granular stage-based (speech2text → discursive_approach)
+uv run python main.py --config config/config.yaml --dry-run
+uv run python main.py --config config/config.yaml --validate-config
+uv run python main.py --config config/config.yaml
+# → output/<run_id>/speech2text/actor_transcripts/ + discursive/*.json
+
+# Legacy discover: speech2text → discursive_approach vía flag anterior
+uv run python main.py --playlist "https://youtube.com/playlist?list=..." --discursive --keep-cache
+# → output/<run_id>/discursive-temas.json + discursive-enfoques.json
+
+# Legacy Fase 1: descubrir tópicos (Ingesta → Diarización → Segmentación → Temas)
 uv run python main.py --playlist "https://youtube.com/playlist?list=..."
 
 # Debug: conservar audios/transcripciones runtime en data/<playlist>/
 uv run python main.py --playlist "https://youtube.com/playlist?list=..." --keep-cache
 
-# Fase 2: analizar un tópico específico
+# Legacy Fase 2: analizar un tópico específico
 uv run python main.py \
     --playlist "https://youtube.com/playlist?list=..." \
     --topico 0 \
     --tema "fracking" \
     --output output/
 
-# Reusar Fase 1 para analizar otro tópico sin re-descargar/re-diarizar
+# Reusar Fase 1 legacy para otro tópico
 uv run python main.py \
-    --resume output/runs/<run_id> \
+    --resume output/<run_id> \
     --topico 1 \
     --tema "seguridad" \
     --output output/
 ```
 
-**Flujo de dos fases:** la Fase 1 (Ingesta → Diarización → Segmentación → Temas) siempre se ejecuta y muestra los tópicos descubiertos. La Fase 2 (Filtrado → Tono → Salida) requiere `--topico N` y `--tema "descripción"`, y genera el informe final en `output/`.
+**Path preferido (`--config config/config.yaml`):** `run.stages` define `speech2text` → `argument_shape` → `topics_cluster` → `topics_approach`, con artefactos durables en `output/<run_id>/`. Permite `--dry-run`, `--validate-config`, reanudar por artefactos, recomputar etapas con `force`/`overwrite`, limitar smoke runs con `run.max_videos` / `run.only_video_ids`, y controlar cache `.wav` con `run.keep_cache`.
 
-**`--resume`:** reutiliza el artefacto `fase1-topicos.json` de una corrida anterior para saltar Ingesta/Diarización/Segmentación/Temas y ejecutar solo Fase 2 sobre un tópico diferente. Cada corrida deja `output/runs/<run_id>/manifest.json` con status, videos procesados/omitidos, fases y timings.
+**Path legacy (`--discursive`):** ejecuta el discover nuevo desde el runner anterior. Se mantiene temporalmente para compatibilidad.
+
+**Path legacy clásico:** Fase 1 Ingesta → Diarización → Segmentación → Temas; Fase 2 Filtrado → Tono → Salida con `--topico`/`--tema`. `--resume` reutiliza `fase1-topicos.json`.
 
 ## speech2text — audio → texto del actor
 
@@ -93,7 +105,7 @@ por video: fetch_one → speaker_timestamps → transcribe_speech
 - **Smoke real:** Play-PoliTest **7/7**, **195** turnos, ~1959 palabras, 0 errores (`scripts_smoke_speech2text.py`).
 - Doc: [`docs/componente-speech2text.md`](docs/componente-speech2text.md).
 
-> **Nota:** `PipelineRunner` / `main.py` aún orquestan Ingesta + DiarizacionService legacy. speech2text está listo vía API programática y smoke; el cableado al runner es el siguiente paso de integración.
+> **Nota:** con `--discursive`, `PipelineRunner.discover_discursive` orquesta speech2text + discursive_approach. El default CLI sin flag sigue el path legacy (Ingesta + DiarizacionService).
 
 ### Diarización / actor (detalle técnico, compartido)
 
@@ -134,7 +146,7 @@ prototipos textuales en español. El LLM razona stance con actor + tema + few-sh
 - **ASR default (speech2text):** `large-v3-turbo` en **clips del actor** con `word_timestamps=False` (timestamps de turno desde pyannote). El camino legacy de Ingesta aún usa Whisper full-video con word timestamps.
 - **Diarización implementada:** primary `pyannote/speaker-diarization-community-1`, fallback `pyannote-community/speaker-diarization-community-1`, `device=auto` y `ProgressHook` si está disponible; los embeddings por speaker salen de `output.speaker_embeddings` del pipeline. El actor se identifica con un perfil de voz cacheado solo durante la ejecución. Si el match es ambiguo, se descarta como otro speaker y el pipeline continúa.
 - **DTOs compartidos vs locales:** `src/tono_politico/models.py` contiene DTOs compartidos por más de un componente. Los DTOs específicos viven dentro de su componente.
-- **Embeddings compartidos:** Segmentación, Temas y Tono usan `LiquidAI/LFM2.5-Embedding-350M`.
+- **Embeddings compartidos:** Segmentación, Temas, Tono y `discursive_approach` usan `LiquidAI/LFM2.5-Embedding-350M`.
 - **Mean pooling manual en Tono:** `sentence-transformers` produce embeddings degenerados con LFM2.5; el Componente 5 usa `AutoModel` directo con mean pooling.
 
 ## Estructura del código
@@ -150,6 +162,12 @@ src/tono_politico/
 │   ├── audio_fetcher/     # playlist + descarga .wav
 │   ├── speaker_timestamps/# pyannote + match actor
 │   └── transcribe_speech/ # Whisper clips actor-only
+├── discursive_approach/   # Preferido: ActorTranscript → temas + enfoques ✅
+│   ├── service.py         # DiscursiveApproachService
+│   ├── requisitos.md      # decisiones 1–9 + checklist
+│   ├── argument_shape/    # Oracion/Argumento (sin word-level)
+│   ├── topics_cluster/    # BERTopic sobre Argumento[]
+│   └── topics_approach/   # Tono + firmas → ResultadoEnfoques
 ├── ingesta/               # Componente 1 legacy ✅ (Whisper full-video)
 │   ├── service.py         # IngestaService
 │   ├── playlist.py        # metadata de playlists vía yt-dlp
@@ -195,7 +213,7 @@ src/tono_politico/
 │   ├── serializacion.py   # JSON + Markdown
 │   └── models.py          # Provenance, PerfilActor, InformeTono
 ├── pipeline/              # Orquestación ✅
-│   ├── runner.py          # PipelineRunner (discover/analyze/analyze_resume)
+│   ├── runner.py          # PipelineRunner (discover/discover_discursive/analyze/…)
 │   ├── manifest.py        # guardar_manifest + resumen_final (CLI summary)
 │   ├── models.py          # RunManifest, RunResult, PhaseRunStatus, VideoRunStatus
 │   └── __init__.py        # exports públicos
@@ -281,9 +299,21 @@ uv run python scripts_smoke_speech2text.py
 # → output/speech2text-smoke/summary.json + actor_transcripts/
 ```
 
-### Componente 2: Segmentación
+### discursive_approach (preferido post-speech2text)
 
-> Hoy entra `list[VideoTranscript]` (legacy). Adaptación a `ActorTranscript` pendiente antes de descartar el camino viejo.
+```python
+from tono_politico.discursive_approach import DiscursiveApproachService
+
+svc = DiscursiveApproachService(actor="Lilly Téllez")
+enfoques = svc.procesar(actor_transcripts)  # shape → cluster → approaches
+```
+
+O por capas: `shape_corpus` → `cluster` → `approaches`.  
+Doc: [`docs/componente-discursive-approach.md`](docs/componente-discursive-approach.md).
+
+### Componente 2: Segmentación (legacy path)
+
+> Entrada `list[VideoTranscript]`. El path preferido usa `argument_shape` sobre `ActorTranscript`.
 
 ```python
 from tono_politico.segmentacion import SegmentacionService
@@ -353,10 +383,11 @@ informe = svc.procesar(resultado_tono)
 ## Documentación técnica
 
 - [**speech2text** (preferido)](docs/componente-speech2text.md)
+- [**discursive_approach** (preferido)](docs/componente-discursive-approach.md)
 - [Componente 1: Ingesta (legacy)](docs/componente-ingesta.md)
 - [Componente 1.5: Diarización (legacy / stack interno)](docs/componente-diarizacion.md)
-- [Componente 2: Segmentación](docs/componente-2-segmentacion.md)
-- [Componente 3: Temas](docs/componente-3-temas.md)
+- [Componente 2: Segmentación (legacy path)](docs/componente-2-segmentacion.md)
+- [Componente 3: Temas (legacy path)](docs/componente-3-temas.md)
 - [Componente 4: Filtrado](docs/componente-4-filtrado.md)
 - [Componente 5: Tono](docs/componente-5-tono.md)
 - [Componente 6: Salida](docs/componente-6-salida.md)

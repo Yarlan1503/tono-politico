@@ -172,7 +172,7 @@ src/tono_politico/speech2text/
 | `audio_fetcher` | ✅ completo e independiente | `ingesta/` legacy sigue en el repo |
 | `speaker_timestamps` | ✅ API nueva | importa stack desde `diarizacion/` |
 | `transcribe_speech` | ✅ API nueva | importa `whisper_clip` / `transcripcion_actor` |
-| `PipelineRunner` | ⏳ aún usa Ingesta + DiarizacionService | cableado pendiente |
+| `PipelineRunner` | ✅ `discover_discursive` (speech2text → discursive_approach) | path legacy `discover`/`analyze` sigue con Ingesta+Diarización |
 
 ## Configuración relevante
 
