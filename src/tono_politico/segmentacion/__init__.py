@@ -1,14 +1,9 @@
-"""Componente 2: Segmentación.
+"""DTOs de segmentación — Segmento, Oracion.
 
-API pública:
-    SegmentacionService — service OOP con config encapsulada.
-    Segmento, Oracion — DTOs de salida.
-
-Pipeline:
-    VideoTranscript[] → spaCy → embeddings → breakpoints → guardrails → Segmento[]
+Los DTOs se conservan porque tono/ y discursive_approach/topics_approach los
+referencian vía models.py.
 """
 
 from .models import Oracion, Segmento
-from .service import SegmentacionService
 
-__all__ = ["SegmentacionService", "Segmento", "Oracion"]
+__all__ = ["Segmento", "Oracion"]

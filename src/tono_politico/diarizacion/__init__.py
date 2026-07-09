@@ -1,11 +1,11 @@
-"""Componente 1.5: Diarización e identificación de actor.
+"""Diarización e identificación de actor — DTOs y utilidades.
 
 API pública:
-    DiarizacionService — service OOP con config encapsulada.
+    ActorTranscript, ActorTranscriptSegment, AsrMetadata — DTOs del transcript.
     TurnoOrador, PerfilVozActor, SpeakerMatch — DTOs del componente.
 
-Los módulos internos (diarizacion, perfil_voz, matching, alineacion)
-son la implementación.
+Los módulos internos (adapter, perfil_voz, matching, transcripcion_actor,
+whisper_clip, actor_transcript) son la implementación reusada por speech2text.
 """
 
 from .models import (
@@ -16,10 +16,8 @@ from .models import (
     SpeakerMatch,
     TurnoOrador,
 )
-from .service import DiarizacionService
 
 __all__ = [
-    "DiarizacionService",
     "TurnoOrador",
     "AsrMetadata",
     "ActorTranscriptSegment",

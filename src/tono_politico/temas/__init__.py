@@ -1,18 +1,11 @@
-"""Componente 3: Temas.
+"""DTOs de temas — ResultadoTemas, TopicoInfo, SegmentoTematizado.
 
-API pública:
-    TemasService — service OOP con BERTopic + LFM2.5-Embedding-350M.
-    ResultadoTemas, TopicoInfo, SegmentoTematizado — DTOs de salida.
-
-Pipeline:
-    Segmento[] → BERTopic → ResultadoTemas (tópicos + asignaciones)
+Los DTOs se conservan porque discursive_approach/topics_approach los referencia.
 """
 
 from .models import ResultadoTemas, SegmentoTematizado, TopicoInfo
-from .service import TemasService
 
 __all__ = [
-    "TemasService",
     "ResultadoTemas",
     "TopicoInfo",
     "SegmentoTematizado",
