@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ..diarization.models import (
+from ..models import (
     ActorTranscript,
     ActorTranscriptSegment,
     AsrMetadata,

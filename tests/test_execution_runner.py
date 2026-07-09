@@ -17,7 +17,7 @@ from tono_politico.execution.plan import build_execution_plan
 from tono_politico.execution.runner import ExecutionFactories, ExecutionRunner
 from tono_politico.speech2text.audio_fetcher.cache import ruta_audio
 from tono_politico.speech2text.audio_fetcher.models import PlaylistInfo, VideoMeta
-from tono_politico.speech2text.diarization.models import (
+from tono_politico.speech2text.models import (
     ActorTranscript,
     ActorTranscriptSegment,
     AsrMetadata,
@@ -238,7 +238,7 @@ output:
     )
     artifacts = resolve_artifacts(cfg, "run-001")
     artifacts.actor_transcripts_dir.mkdir(parents=True)
-    from tono_politico.speech2text.diarization.actor_transcript import guardar_actor_transcript
+    from tono_politico.speech2text.actor_transcript import guardar_actor_transcript
 
     guardar_actor_transcript(_actor_transcript(), artifacts.actor_transcripts_dir / "vid-1.json")
     plan = build_execution_plan(cfg, artifacts)
@@ -283,7 +283,7 @@ def test_execution_runner_fail_fast_false_continua_si_dependencia_externa_existe
 ):
     external_transcripts = tmp_path / "external-transcripts"
     external_transcripts.mkdir()
-    from tono_politico.speech2text.diarization.actor_transcript import guardar_actor_transcript
+    from tono_politico.speech2text.actor_transcript import guardar_actor_transcript
 
     guardar_actor_transcript(_actor_transcript(), external_transcripts / "vid-1.json")
     cfg = _load(

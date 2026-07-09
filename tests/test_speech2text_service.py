@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 from tono_politico.speech2text.audio_fetcher.models import AudioVideo, PlaylistInfo, VideoMeta
-from tono_politico.speech2text.diarization.models import (
+from tono_politico.speech2text.models import (
     ActorTranscript,
     ActorTranscriptSegment,
     AsrMetadata,

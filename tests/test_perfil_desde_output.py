@@ -7,7 +7,7 @@ from dataclasses import dataclass
 import numpy as np
 import pytest
 
-from tono_politico.speech2text.diarization.perfil_voz import construir_perfil_desde_output
+from tono_politico.speech2text.speaker_timestamps.perfil_voz import construir_perfil_desde_output
 
 
 @dataclass

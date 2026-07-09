@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from ..speech2text.diarization.models import ActorTranscript
+from ..speech2text.models import ActorTranscript
 from .argument_shape.models import Argumento
 from .argument_shape.service import ArgumentShapeService
 from .topics_approach.models import ResultadoEnfoques

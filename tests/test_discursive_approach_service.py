@@ -10,7 +10,7 @@ from tono_politico.discursive_approach.topics_cluster.models import (
     ResultadoTemas,
     TopicoInfo,
 )
-from tono_politico.speech2text.diarization.models import (
+from tono_politico.speech2text.models import (
     ActorTranscript,
     ActorTranscriptSegment,
     AsrMetadata,

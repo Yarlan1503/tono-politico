@@ -11,7 +11,7 @@ import pytest
 
 
 def _sut():
-    return import_module("tono_politico.speech2text.diarization.whisper_clip")
+    return import_module("tono_politico.speech2text.transcribe_speech.whisper_clip")
 
 
 def _audio(tmp_path: Path) -> Path:

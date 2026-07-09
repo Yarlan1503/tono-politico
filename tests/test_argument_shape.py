@@ -12,7 +12,7 @@ from tono_politico.discursive_approach.argument_shape.sentencias import (
     extraer_oraciones_de_transcript,
 )
 from tono_politico.discursive_approach.argument_shape.service import ArgumentShapeService
-from tono_politico.speech2text.diarization.models import (
+from tono_politico.speech2text.models import (
     ActorTranscript,
     ActorTranscriptSegment,
     AsrMetadata,

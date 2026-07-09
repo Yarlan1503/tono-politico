@@ -10,7 +10,7 @@ from tono_politico.speech2text.speaker_timestamps import SpeakerTimestampsServic
 from tono_politico.speech2text.transcribe_speech import TranscribeSpeechService
 
 from .audio_fetcher.models import PlaylistInfo
-from .diarization.models import ActorTranscript
+from .models import ActorTranscript
 
 logger = logging.getLogger(__name__)
 

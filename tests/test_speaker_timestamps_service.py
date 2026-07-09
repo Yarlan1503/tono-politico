@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from tono_politico.speech2text.audio_fetcher.models import AudioVideo
-from tono_politico.speech2text.diarization.models import PerfilVozActor, SpeakerMatch
+from tono_politico.speech2text.models import PerfilVozActor, SpeakerMatch
 from tono_politico.speech2text.speaker_timestamps.service import (
     SpeakerTimestampsService,
     _extraer_turnos,

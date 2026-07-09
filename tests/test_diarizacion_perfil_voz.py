@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from tono_politico.speech2text.diarization.models import PerfilVozActor
-from tono_politico.speech2text.diarization.perfil_voz import construir_perfil
+from tono_politico.speech2text.models import PerfilVozActor
+from tono_politico.speech2text.speaker_timestamps.perfil_voz import construir_perfil
 
 # ──────────────────────────────────────────────────────────
 # Fakes

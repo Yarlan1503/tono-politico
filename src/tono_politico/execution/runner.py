@@ -20,12 +20,12 @@ from tono_politico.discursive_approach.topics_cluster.serializacion import (
     cargar_resultado_temas,
     guardar_resultado_temas,
 )
-from tono_politico.speech2text.audio_fetcher.cache import ruta_audio
-from tono_politico.speech2text.diarization.actor_transcript import (
+from tono_politico.speech2text.actor_transcript import (
     cargar_actor_transcript,
     guardar_actor_transcript,
 )
-from tono_politico.speech2text.diarization.models import ActorTranscript
+from tono_politico.speech2text.audio_fetcher.cache import ruta_audio
+from tono_politico.speech2text.models import ActorTranscript
 
 from .artifacts import cargar_argumentos, guardar_argumentos
 from .models import (

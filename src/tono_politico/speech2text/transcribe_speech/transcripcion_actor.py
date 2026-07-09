@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
-from .models import ActorTranscript, ActorTranscriptSegment, AsrMetadata, TurnoOrador
+from ..models import ActorTranscript, ActorTranscriptSegment, AsrMetadata, TurnoOrador
 
 SCHEMA_VERSION = "actor_transcript.v1"
 SCOPE_ACTOR_ONLY = "actor_only"

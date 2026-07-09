@@ -3,8 +3,7 @@
 Entrada: AudioVideo (ruta .wav).
 Salida: list[TurnoOrador] solo del actor aceptado.
 
-Reutiliza el stack pyannote de ``speech2text.diarization`` durante la
-migración; la frontera del paquete es la API por video.
+Usa el stack pyannote (adapter, matching, perfil_voz) internamente.
 """
 
 from __future__ import annotations
@@ -16,10 +15,10 @@ from typing import Any
 
 from tono_politico.speech2text.audio_fetcher.models import AudioVideo
 
-from ..diarization.adapter import load_pyannote_pipeline, run_pyannote_pipeline
-from ..diarization.matching import identificar_actor
-from ..diarization.models import PerfilVozActor, TurnoOrador
-from ..diarization.perfil_voz import construir_perfil_desde_output
+from ..models import PerfilVozActor, TurnoOrador
+from .adapter import load_pyannote_pipeline, run_pyannote_pipeline
+from .matching import identificar_actor
+from .perfil_voz import construir_perfil_desde_output
 
 logger = logging.getLogger(__name__)
 

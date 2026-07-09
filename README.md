@@ -122,23 +122,24 @@ src/tono_politico/
 │   └── models.py          # RunConfig, StageResult, ExecutionPlan
 ├── speech2text/           # autocontenido: audio → ActorTranscript ✅
 │   ├── service.py         # SpeechToTextService
+│   ├── models.py          # ActorTranscript, TurnoOrador, PerfilVozActor, SpeakerMatch
+│   ├── actor_transcript.py # Serialización JSON actor_transcript.v1
 │   ├── requisitos.md      # checklist + viabilidad
-│   ├── diarization/       # DTOs + utils de pyannote/Whisper (antes diarizacion/)
-│   │   ├── models.py      # TurnoOrador, PerfilVozActor, SpeakerMatch, ActorTranscript
-│   │   ├── adapter.py     # load_pyannote_pipeline
-│   │   ├── matching.py    # identificar_actor, clasificar_speaker
-│   │   ├── perfil_voz.py  # construir_perfil_desde_output
-│   │   ├── transcripcion_actor.py
-│   │   ├── whisper_clip.py    # WhisperFfmpegClipTranscriber
-│   │   └── actor_transcript.py # Serialización JSON actor_transcript.v1
 │   ├── audio_fetcher/     # playlist + descarga .wav
 │   │   ├── models.py      # VideoMeta, AudioVideo, DownloadResult, PlaylistInfo, VideoInfo
 │   │   ├── cache.py       # rutas .wav
 │   │   ├── playlist.py    # obtener_info_playlist
 │   │   ├── audio.py       # descarga + cache
 │   │   └── service.py     # AudioFetcherService
-│   ├── speaker_timestamps/# pyannote + match actor
-│   └── transcribe_speech/ # Whisper clips actor-only
+│   ├── speaker_timestamps/# pyannote + match actor (diarización del actor)
+│   │   ├── service.py     # SpeakerTimestampsService
+│   │   ├── adapter.py     # load_pyannote_pipeline
+│   │   ├── matching.py    # identificar_actor, clasificar_speaker
+│   │   └── perfil_voz.py  # construir_perfil_desde_output
+│   └── transcribe_speech/ # Whisper clips actor-only → ActorTranscript
+│       ├── service.py     # TranscribeSpeechService
+│       ├── whisper_clip.py    # WhisperFfmpegClipTranscriber
+│       └── transcripcion_actor.py
 ├── discursive_approach/   # ActorTranscript → temas + enfoques ✅
 │   ├── service.py         # DiscursiveApproachService
 │   ├── requisitos.md      # decisiones 1–9 + checklist

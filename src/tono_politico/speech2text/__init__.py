@@ -10,7 +10,26 @@ Orquestador: SpeechToTextService.
 
 from __future__ import annotations
 
-from .audio_fetcher import AudioFetcherService, AudioVideo, DownloadResult, VideoMeta
+from .actor_transcript import (
+    cargar_actor_transcript,
+    guardar_actor_transcript,
+)
+from .audio_fetcher import (
+    AudioFetcherService,
+    AudioVideo,
+    DownloadResult,
+    PlaylistInfo,
+    VideoInfo,
+    VideoMeta,
+)
+from .models import (
+    ActorTranscript,
+    ActorTranscriptSegment,
+    AsrMetadata,
+    PerfilVozActor,
+    SpeakerMatch,
+    TurnoOrador,
+)
 from .service import SpeechToTextService
 from .speaker_timestamps import SpeakerTimestampsService
 from .transcribe_speech import TranscribeSpeechService
@@ -23,4 +42,14 @@ __all__ = [
     "VideoMeta",
     "AudioVideo",
     "DownloadResult",
+    "PlaylistInfo",
+    "VideoInfo",
+    "ActorTranscript",
+    "ActorTranscriptSegment",
+    "AsrMetadata",
+    "PerfilVozActor",
+    "SpeakerMatch",
+    "TurnoOrador",
+    "cargar_actor_transcript",
+    "guardar_actor_transcript",
 ]

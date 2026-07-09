@@ -13,9 +13,9 @@ from typing import Any
 
 from tono_politico.speech2text.audio_fetcher.models import AudioVideo
 
-from ..diarization.models import ActorTranscript, TurnoOrador
-from ..diarization.transcripcion_actor import transcribir_turnos_actor
-from ..diarization.whisper_clip import WhisperFfmpegClipTranscriber
+from ..models import ActorTranscript, TurnoOrador
+from .transcripcion_actor import transcribir_turnos_actor
+from .whisper_clip import WhisperFfmpegClipTranscriber
 
 logger = logging.getLogger(__name__)
 
