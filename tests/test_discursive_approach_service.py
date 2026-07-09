@@ -2,11 +2,6 @@
 
 from __future__ import annotations
 
-from tono_politico.diarizacion.models import (
-    ActorTranscript,
-    ActorTranscriptSegment,
-    AsrMetadata,
-)
 from tono_politico.discursive_approach.argument_shape.models import Argumento
 from tono_politico.discursive_approach.service import DiscursiveApproachService
 from tono_politico.discursive_approach.topics_approach.models import ResultadoEnfoques
@@ -14,6 +9,11 @@ from tono_politico.discursive_approach.topics_cluster.models import (
     ArgumentoTematizado,
     ResultadoTemas,
     TopicoInfo,
+)
+from tono_politico.speech2text.diarization.models import (
+    ActorTranscript,
+    ActorTranscriptSegment,
+    AsrMetadata,
 )
 
 

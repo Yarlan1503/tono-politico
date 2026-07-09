@@ -2,11 +2,6 @@
 
 from __future__ import annotations
 
-from tono_politico.diarizacion.models import (
-    ActorTranscript,
-    ActorTranscriptSegment,
-    AsrMetadata,
-)
 from tono_politico.discursive_approach.argument_shape.agrupacion import agrupar_argumentos
 from tono_politico.discursive_approach.argument_shape.breakpoints import (
     Breakpoint,
@@ -17,6 +12,11 @@ from tono_politico.discursive_approach.argument_shape.sentencias import (
     extraer_oraciones_de_transcript,
 )
 from tono_politico.discursive_approach.argument_shape.service import ArgumentShapeService
+from tono_politico.speech2text.diarization.models import (
+    ActorTranscript,
+    ActorTranscriptSegment,
+    AsrMetadata,
+)
 
 
 class FakeNlp:

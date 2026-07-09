@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from tono_politico.diarizacion.models import TurnoOrador
+from tono_politico.speech2text.diarization.models import TurnoOrador
 
 
 def _sut():
@@ -16,7 +16,7 @@ def _sut():
     Esto permite que pytest colecte todos los tests RED aunque el módulo aún
     no exista: la falla esperada inicial es ModuleNotFoundError.
     """
-    return import_module("tono_politico.diarizacion.transcripcion_actor")
+    return import_module("tono_politico.speech2text.diarization.transcripcion_actor")
 
 
 def _clip(text: str, t_start: float, t_end: float):

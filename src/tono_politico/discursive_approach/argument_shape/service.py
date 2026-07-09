@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
-from ...diarizacion.models import ActorTranscript
+from ...speech2text.diarization.models import ActorTranscript
 from .agrupacion import agrupar_argumentos
 from .breakpoints import detectar_breakpoints
 from .models import Argumento

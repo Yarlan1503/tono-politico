@@ -5,14 +5,13 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from tono_politico.diarizacion.models import (
+from tono_politico.speech2text.audio_fetcher.models import AudioVideo, PlaylistInfo, VideoMeta
+from tono_politico.speech2text.diarization.models import (
     ActorTranscript,
     ActorTranscriptSegment,
     AsrMetadata,
     TurnoOrador,
 )
-from tono_politico.models import PlaylistInfo
-from tono_politico.speech2text.audio_fetcher.models import AudioVideo, VideoMeta
 from tono_politico.speech2text.service import SpeechToTextService
 
 

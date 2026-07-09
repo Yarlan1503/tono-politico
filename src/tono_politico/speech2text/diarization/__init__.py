@@ -5,7 +5,7 @@ API pública:
     TurnoOrador, PerfilVozActor, SpeakerMatch — DTOs del componente.
 
 Los módulos internos (adapter, perfil_voz, matching, transcripcion_actor,
-whisper_clip, actor_transcript) son la implementación reusada por speech2text.
+whisper_clip, actor_transcript) son la implementación usada por speech2text.
 """
 
 from .models import (

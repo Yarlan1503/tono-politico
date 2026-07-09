@@ -11,10 +11,11 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from tono_politico.diarizacion.models import ActorTranscript, TurnoOrador
-from tono_politico.diarizacion.transcripcion_actor import transcribir_turnos_actor
-from tono_politico.diarizacion.whisper_clip import WhisperFfmpegClipTranscriber
 from tono_politico.speech2text.audio_fetcher.models import AudioVideo
+
+from ..diarization.models import ActorTranscript, TurnoOrador
+from ..diarization.transcripcion_actor import transcribir_turnos_actor
+from ..diarization.whisper_clip import WhisperFfmpegClipTranscriber
 
 logger = logging.getLogger(__name__)
 

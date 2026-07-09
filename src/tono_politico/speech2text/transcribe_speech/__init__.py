@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-from tono_politico.diarizacion.models import (
+from ..diarization.models import (
     ActorTranscript,
     ActorTranscriptSegment,
     AsrMetadata,
 )
-
 from .service import TranscribeSpeechService
 
 __all__ = [

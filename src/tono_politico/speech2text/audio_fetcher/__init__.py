@@ -2,17 +2,19 @@
 
 API pública:
     AudioFetcherService — discover / fetch_one
-    VideoMeta, AudioVideo, DownloadResult — DTOs
+    VideoMeta, AudioVideo, DownloadResult, PlaylistInfo, VideoInfo — DTOs
 """
 
 from __future__ import annotations
 
-from .models import AudioVideo, DownloadResult, VideoMeta
+from .models import AudioVideo, DownloadResult, PlaylistInfo, VideoInfo, VideoMeta
 from .service import AudioFetcherService
 
 __all__ = [
     "AudioFetcherService",
     "AudioVideo",
     "DownloadResult",
+    "PlaylistInfo",
+    "VideoInfo",
     "VideoMeta",
 ]

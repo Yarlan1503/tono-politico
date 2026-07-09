@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import pytest
 
-from tono_politico.diarizacion.matching import (
+from tono_politico.speech2text.diarization.matching import (
     clasificar_speaker,
     distancia_coseno,
     identificar_actor,
 )
-from tono_politico.diarizacion.models import PerfilVozActor
+from tono_politico.speech2text.diarization.models import PerfilVozActor
 
 # ──────────────────────────────────────────────────────────
 # Helpers

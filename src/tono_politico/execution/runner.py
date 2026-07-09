@@ -11,11 +11,6 @@ from typing import Any
 
 import yaml
 
-from tono_politico.diarizacion.actor_transcript import (
-    cargar_actor_transcript,
-    guardar_actor_transcript,
-)
-from tono_politico.diarizacion.models import ActorTranscript
 from tono_politico.discursive_approach.argument_shape.models import Argumento
 from tono_politico.discursive_approach.topics_approach.serializacion import (
     guardar_resultado_enfoques,
@@ -26,6 +21,11 @@ from tono_politico.discursive_approach.topics_cluster.serializacion import (
     guardar_resultado_temas,
 )
 from tono_politico.speech2text.audio_fetcher.cache import ruta_audio
+from tono_politico.speech2text.diarization.actor_transcript import (
+    cargar_actor_transcript,
+    guardar_actor_transcript,
+)
+from tono_politico.speech2text.diarization.models import ActorTranscript
 
 from .artifacts import cargar_argumentos, guardar_argumentos
 from .models import (

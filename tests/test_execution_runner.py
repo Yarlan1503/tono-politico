@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from tono_politico.diarizacion.models import ActorTranscript, ActorTranscriptSegment, AsrMetadata
 from tono_politico.discursive_approach.argument_shape.models import Argumento, Oracion
 from tono_politico.discursive_approach.topics_approach.models import ResultadoEnfoques
 from tono_politico.discursive_approach.topics_cluster.models import (
@@ -16,9 +15,13 @@ from tono_politico.execution.artifacts import resolve_artifacts
 from tono_politico.execution.config import load_run_config
 from tono_politico.execution.plan import build_execution_plan
 from tono_politico.execution.runner import ExecutionFactories, ExecutionRunner
-from tono_politico.models import PlaylistInfo
 from tono_politico.speech2text.audio_fetcher.cache import ruta_audio
-from tono_politico.speech2text.audio_fetcher.models import VideoMeta
+from tono_politico.speech2text.audio_fetcher.models import PlaylistInfo, VideoMeta
+from tono_politico.speech2text.diarization.models import (
+    ActorTranscript,
+    ActorTranscriptSegment,
+    AsrMetadata,
+)
 
 
 def _write_config(tmp_path: Path, content: str) -> Path:
@@ -235,7 +238,7 @@ output:
     )
     artifacts = resolve_artifacts(cfg, "run-001")
     artifacts.actor_transcripts_dir.mkdir(parents=True)
-    from tono_politico.diarizacion.actor_transcript import guardar_actor_transcript
+    from tono_politico.speech2text.diarization.actor_transcript import guardar_actor_transcript
 
     guardar_actor_transcript(_actor_transcript(), artifacts.actor_transcripts_dir / "vid-1.json")
     plan = build_execution_plan(cfg, artifacts)
@@ -280,7 +283,7 @@ def test_execution_runner_fail_fast_false_continua_si_dependencia_externa_existe
 ):
     external_transcripts = tmp_path / "external-transcripts"
     external_transcripts.mkdir()
-    from tono_politico.diarizacion.actor_transcript import guardar_actor_transcript
+    from tono_politico.speech2text.diarization.actor_transcript import guardar_actor_transcript
 
     guardar_actor_transcript(_actor_transcript(), external_transcripts / "vid-1.json")
     cfg = _load(

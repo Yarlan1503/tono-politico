@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from tono_politico.diarizacion.models import PerfilVozActor, SpeakerMatch, TurnoOrador
-
+from ..diarization.models import PerfilVozActor, SpeakerMatch, TurnoOrador
 from .service import SpeakerTimestampsService
 
 __all__ = [

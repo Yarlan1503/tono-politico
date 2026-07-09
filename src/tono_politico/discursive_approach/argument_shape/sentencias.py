@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
-from ...diarizacion.models import ActorTranscript, ActorTranscriptSegment
+from ...speech2text.diarization.models import ActorTranscript, ActorTranscriptSegment
 from .models import Oracion
 
 if TYPE_CHECKING:

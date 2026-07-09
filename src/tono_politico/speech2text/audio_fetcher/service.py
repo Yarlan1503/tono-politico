@@ -5,11 +5,9 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from tono_politico.models import PlaylistInfo
-
 from .audio import descargar_audio_result, verificar_cache_videos
 from .cache import ruta_audio
-from .models import AudioVideo, VideoMeta
+from .models import AudioVideo, PlaylistInfo, VideoMeta
 from .playlist import obtener_info_playlist
 
 logger = logging.getLogger(__name__)

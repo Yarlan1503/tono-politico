@@ -8,7 +8,7 @@ from typing import Any
 
 import pytest
 
-from tono_politico.diarizacion.adapter import (
+from tono_politico.speech2text.diarization.adapter import (
     PyannotePipelineLoadError,
     load_pyannote_pipeline,
     run_pyannote_pipeline,

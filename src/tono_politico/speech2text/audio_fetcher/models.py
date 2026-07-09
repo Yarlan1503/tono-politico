@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 
@@ -73,3 +73,23 @@ class DownloadResult:
     path: Path | None
     ok: bool
     error: str | None = None
+
+
+@dataclass
+class VideoInfo:
+    """Metadatos básicos de un video de la playlist."""
+
+    id: str
+    titulo: str
+    url: str
+    duracion: float  # segundos
+    fecha: str | None = None  # YYYYMMDD
+
+
+@dataclass
+class PlaylistInfo:
+    """Información de una playlist de YouTube."""
+
+    nombre: str
+    url: str
+    videos: list[VideoInfo] = field(default_factory=list)

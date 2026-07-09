@@ -6,8 +6,7 @@ import subprocess
 from pathlib import Path
 from unittest.mock import patch
 
-from tono_politico.models import PlaylistInfo
-from tono_politico.speech2text.audio_fetcher.models import VideoMeta
+from tono_politico.speech2text.audio_fetcher.models import PlaylistInfo, VideoMeta
 from tono_politico.speech2text.audio_fetcher.service import AudioFetcherService
 
 

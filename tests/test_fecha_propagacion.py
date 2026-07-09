@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from tono_politico.diarizacion.models import TurnoOrador
-from tono_politico.diarizacion.transcripcion_actor import (
+from tono_politico.discursive_approach.argument_shape.service import ArgumentShapeService
+from tono_politico.speech2text.audio_fetcher.models import AudioVideo
+from tono_politico.speech2text.diarization.models import TurnoOrador
+from tono_politico.speech2text.diarization.transcripcion_actor import (
     ClipTranscriptSegment,
     transcribir_turnos_actor,
 )
-from tono_politico.discursive_approach.argument_shape.service import ArgumentShapeService
-from tono_politico.speech2text.audio_fetcher.models import AudioVideo
 from tono_politico.speech2text.transcribe_speech.service import TranscribeSpeechService
 
 

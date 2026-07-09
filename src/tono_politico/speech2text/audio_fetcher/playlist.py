@@ -7,9 +7,7 @@ import logging
 import re
 import subprocess
 
-from tono_politico.models import PlaylistInfo
-
-from .models import VideoMeta
+from .models import PlaylistInfo, VideoMeta
 
 logger = logging.getLogger(__name__)
 

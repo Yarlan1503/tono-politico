@@ -5,11 +5,12 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from tono_politico.diarizacion.models import ActorTranscript
-from tono_politico.models import PlaylistInfo
 from tono_politico.speech2text.audio_fetcher import AudioFetcherService, AudioVideo, VideoMeta
 from tono_politico.speech2text.speaker_timestamps import SpeakerTimestampsService
 from tono_politico.speech2text.transcribe_speech import TranscribeSpeechService
+
+from .audio_fetcher.models import PlaylistInfo
+from .diarization.models import ActorTranscript
 
 logger = logging.getLogger(__name__)
 

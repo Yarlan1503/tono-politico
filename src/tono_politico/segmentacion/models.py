@@ -4,7 +4,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from ..models import WordTimestamp
+
+@dataclass
+class WordTimestamp:
+    """Timestamp de una palabra individual dentro de un segmento."""
+
+    word: str
+    start: float
+    end: float
+    probability: float | None = None
 
 
 @dataclass

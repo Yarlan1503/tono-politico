@@ -5,14 +5,14 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from tono_politico.diarizacion.actor_transcript import (
+from tono_politico.speech2text.diarization.actor_transcript import (
     actor_transcript_from_json,
     actor_transcript_to_dict,
     actor_transcript_to_json,
     cargar_actor_transcript,
     guardar_actor_transcript,
 )
-from tono_politico.diarizacion.models import (
+from tono_politico.speech2text.diarization.models import (
     ActorTranscript,
     ActorTranscriptSegment,
     AsrMetadata,

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from tono_politico.diarizacion import PerfilVozActor, SpeakerMatch, TurnoOrador
+from tono_politico.speech2text.diarization import PerfilVozActor, SpeakerMatch, TurnoOrador
 
 # ──────────────────────────────────────────────────────────
 # TurnoOrador

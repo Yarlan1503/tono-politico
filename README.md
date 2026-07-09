@@ -113,7 +113,6 @@ prototipos textuales en español. El LLM razona stance con actor + tema + few-sh
 
 ```text
 src/tono_politico/
-├── models.py              # DTOs compartidos (PlaylistInfo)
 ├── execution/             # Control plane stage-based ✅
 │   ├── runner.py          # ExecutionRunner
 │   ├── config.py          # load_run_config
@@ -121,10 +120,23 @@ src/tono_politico/
 │   ├── artifacts.py       # resolve_artifacts
 │   ├── validation.py      # validate_run_config
 │   └── models.py          # RunConfig, StageResult, ExecutionPlan
-├── speech2text/           # audio → ActorTranscript ✅
+├── speech2text/           # autocontenido: audio → ActorTranscript ✅
 │   ├── service.py         # SpeechToTextService
 │   ├── requisitos.md      # checklist + viabilidad
+│   ├── diarization/       # DTOs + utils de pyannote/Whisper (antes diarizacion/)
+│   │   ├── models.py      # TurnoOrador, PerfilVozActor, SpeakerMatch, ActorTranscript
+│   │   ├── adapter.py     # load_pyannote_pipeline
+│   │   ├── matching.py    # identificar_actor, clasificar_speaker
+│   │   ├── perfil_voz.py  # construir_perfil_desde_output
+│   │   ├── transcripcion_actor.py
+│   │   ├── whisper_clip.py    # WhisperFfmpegClipTranscriber
+│   │   └── actor_transcript.py # Serialización JSON actor_transcript.v1
 │   ├── audio_fetcher/     # playlist + descarga .wav
+│   │   ├── models.py      # VideoMeta, AudioVideo, DownloadResult, PlaylistInfo, VideoInfo
+│   │   ├── cache.py       # rutas .wav
+│   │   ├── playlist.py    # obtener_info_playlist
+│   │   ├── audio.py       # descarga + cache
+│   │   └── service.py     # AudioFetcherService
 │   ├── speaker_timestamps/# pyannote + match actor
 │   └── transcribe_speech/ # Whisper clips actor-only
 ├── discursive_approach/   # ActorTranscript → temas + enfoques ✅
@@ -133,27 +145,19 @@ src/tono_politico/
 │   ├── argument_shape/    # Oracion/Argumento (spaCy + LFM2.5)
 │   ├── topics_cluster/    # BERTopic sobre Argumento[]
 │   └── topics_approach/   # Tono + firmas → ResultadoEnfoques
-├── diarizacion/           # DTOs + utils de diarización (reusado por speech2text)
-│   ├── models.py          # TurnoOrador, PerfilVozActor, SpeakerMatch, ActorTranscript
-│   ├── adapter.py         # load_pyannote_pipeline
-│   ├── matching.py        # identificar_actor, clasificar_speaker
-│   ├── perfil_voz.py      # construir_perfil_desde_output
-│   ├── transcripcion_actor.py  # transcribir_turnos_actor
-│   ├── whisper_clip.py    # WhisperFfmpegClipTranscriber
-│   └── actor_transcript.py     # Serialización JSON actor_transcript.v1
 ├── tono/                  # Stack de inferencia de tono (reusado por topics_approach)
 │   ├── service.py         # TonoService (orquestador híbrido)
 │   ├── embeddings.py      # EmbeddorTono + similitud coseno
 │   ├── zero_shot.py       # ClasificadorLLM para stance
 │   ├── taxonomia.py       # 25 prototipos en 5 dimensiones
 │   └── models.py          # ResultadoTono, SegmentoConTono
-├── segmentacion/models.py # DTOs: Segmento, Oracion
+├── segmentacion/models.py # DTOs: Segmento, Oracion, WordTimestamp
 ├── temas/models.py        # DTOs: ResultadoTemas, TopicoInfo
 └── filtrado/models.py     # DTOs: ResultadoFiltrado, SegmentoFiltrado
 main.py                    # CLI entry point — delega a ExecutionRunner
 ```
 
-> **Nota:** `segmentacion/models.py`, `temas/models.py` y `filtrado/models.py` contienen solo DTOs que el path activo referencia transitivamente (vía `tono/models.py` y `topics_approach/adapter.py`). En una futura Fase 3 de desacoplamiento, estos DTOs se consolidarán dentro de `discursive_approach/` o `tono/`.
+> **Nota:** `segmentacion/models.py`, `temas/models.py` y `filtrado/models.py` contienen solo DTOs que `tono/` y `topics_approach/adapter.py` referencian. Se consolidarán en la Fase 2 del desacoplamiento de `discursive_approach`.
 
 ## Configuración
 
