@@ -9,8 +9,8 @@ from tono_politico.speech2text.models import (
     ActorTranscript,
     TurnoOrador,
 )
+from tono_politico.speech2text.transcribe_speech.models import ClipTranscriptSegment
 from tono_politico.speech2text.transcribe_speech.service import TranscribeSpeechService
-from tono_politico.speech2text.transcribe_speech.transcripcion_actor import ClipTranscriptSegment
 
 
 class FakeTranscriber:

@@ -54,7 +54,7 @@ salida                    # informe JSON/MD (fuera del umbrella)
 |---|---|
 | `speech2text` | Upstream: produce `ActorTranscript` |
 | **Filtrado** (C4 legacy) | **Después** de `discursive_approach`: elige tema/enfoque para el informe. **No** corre antes de Tono en este diseño (Tono ya se invoca dentro de `topics_approach`). |
-| **Tono** (`tono/`) | **No** es un paso suelto del runner aquí: es **dependencia/base** de `topics_approach`. No se copia taxonomía. |
+| **Tono** (`tono/`) | Dependencia retirada temporalmente; `topics_approach` queda bloqueado hasta definir su reemplazo. |
 | **Salida** | Downstream: materializa el informe; fuera del umbrella |
 
 ---
@@ -63,7 +63,7 @@ salida                    # informe JSON/MD (fuera del umbrella)
 
 | # | Decisión | Valor |
 |---|---|---|
-| 1 | Unidad semántica | **`Segmento` → `Argumento`** en el diseño nuevo. Alias de compatibilidad mientras existan `temas/` / `filtrado` / `tono` legacy sobre `Segmento`. |
+| 1 | Unidad semántica | **`Segmento` → `Argumento`** en el diseño nuevo. Los aliases legacy fueron retirados junto con sus paquetes. |
 | 2 | Agrupación de enfoques | **Firmas de tono** (stance + dominantes taxonomía v3 + `intensidad_bin`) + orden temporal. **Sin HDBSCAN** en el camino feliz de approach. |
 | 3 | Alcance de approach | **Todos** los temas no-outlier. Sin `topico_id` obligatorio en v1. |
 | 4 | Tiempo | **`VideoMeta.fecha`** (YYYYMMDD) → `ActorTranscript` → `Argumento.fecha`. |
@@ -103,10 +103,8 @@ Dependencias externas:
 
 | Paquete | Uso |
 |---|---|
-| `tono/` | Base de approach: `TonoService`, `taxonomia.py` v3, DTOs de scores |
-| `speech2text` / diarización | Entrada `ActorTranscript` (+ fecha a extender) |
-| `segmentacion/`, `temas/` | Referencia legacy a migrar; no importar a largo plazo |
-| `filtrado/` | No se mueve aquí |
+| `speech2text` | Entrada `ActorTranscript` (+ fecha) |
+| `tono/`, `segmentacion/`, `temas/`, `filtrado/` | Paquetes retirados; la reconstrucción de `topics_approach` queda pendiente |
 
 ---
 
@@ -410,7 +408,7 @@ Calibrar con smoke; no tratar defaults como magia no testeada.
 
 ### R3 — `topics_approach` (TDD; base = Tono)
 
-- [x] Dependencia explícita de `tono/` (sin copiar taxonomía)
+- [ ] Sustituir la dependencia retirada de `tono/` por contratos propios
 - [x] Adaptador `Argumento` → input de `TonoService`
 - [x] DTOs `EnfoqueInfo`, `ArgumentoConEnfoque`, `ResultadoEnfoques*`
 - [x] `descubrir_enfoques`: todos los temas → Tono → **firmas** → orden temporal

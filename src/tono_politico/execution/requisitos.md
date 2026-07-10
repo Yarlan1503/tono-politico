@@ -232,33 +232,18 @@ project:
 
 speech2text:
   enabled: true
-  audio_fetcher:
-    enabled: true
-    force_download: false
-    playlist_dir_template: "{playlist}"
-    audio_dir_template: "videos-{playlist}"
   speaker_timestamps:
-    enabled: true
     actor_objetivo: "Lilly Téllez"
     pipeline: "pyannote/speaker-diarization-community-1"
     fallback_pipeline: "pyannote-community/speaker-diarization-community-1"
     device: "auto"
     umbral_match: 0.5
     umbral_ambiguo: 0.7
-    match_ambiguo: "descartar_como_otro_speaker"
     referencia_voz:
-      origen: "misma_playlist"
-      max_audios: 1
       video_id: "su9nURIj9XQ"
-      url: "https://www.youtube.com/watch?v=su9nURIj9XQ&list=PLE9Zk7g9R__M&index=8"
-      cache: "solo_ejecucion"
   transcribe_speech:
-    enabled: true
     whisper_model: "large-v3-turbo"
     idioma: "es"
-    word_timestamps: false
-    force_retranscribe: false
-    skip_existing_transcripts: true
 
 discursive_approach:
   enabled: true
@@ -353,6 +338,7 @@ discursive_approach:
 | `manifest_path` | `Path` | `output/<run_id>/manifest.json` |
 | `resolved_config_path` | `Path` | `output/<run_id>/resolved-config.yaml` |
 | `actor_transcripts_dir` | `Path` | `output/<run_id>/speech2text/actor_transcripts/` |
+| `speech2text_quality_path` | `Path` | `output/<run_id>/speech2text/quality.json` |
 | `argumentos_path` | `Path` | `output/<run_id>/discursive/argumentos.json` |
 | `temas_path` | `Path` | `output/<run_id>/discursive/discursive-temas.json` |
 | `enfoques_path` | `Path` | `output/<run_id>/discursive/discursive-enfoques.json` |
@@ -375,6 +361,7 @@ discursive_approach:
 - [x] `output/<run_id>/manifest.json`
 - [x] `output/<run_id>/resolved-config.yaml`
 - [x] `output/<run_id>/speech2text/actor_transcripts/<video_id>.json`
+- [x] `output/<run_id>/speech2text/quality.json`
 - [x] `output/<run_id>/discursive/argumentos.json`
 - [x] `output/<run_id>/discursive/discursive-temas.json`
 - [x] `output/<run_id>/discursive/discursive-enfoques.json`

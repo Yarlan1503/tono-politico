@@ -58,13 +58,21 @@ class TestDistanciaCoseno:
         d = distancia_coseno(a, b)
         assert d < 0.5
 
+    def test_dimensiones_incompatibles_producen_error_accionable(self):
+        with pytest.raises(ValueError, match="dimensiones"):
+            distancia_coseno([1.0, 0.0], [1.0])
+
+    def test_vector_no_finito_produce_error_accionable(self):
+        with pytest.raises(ValueError, match="finito"):
+            distancia_coseno([1.0, float("nan")], [1.0, 0.0])
+
     def test_dim_alta(self):
         """Funciona con dimensiones altas (ej. embeddings de speaker)."""
         import random
 
         random.seed(42)
         a = [random.gauss(0, 1) for _ in range(512)]
-        b = a.copy()  # idéntico
+        b = a.copy()
         assert distancia_coseno(a, b) == pytest.approx(0.0)
 
 

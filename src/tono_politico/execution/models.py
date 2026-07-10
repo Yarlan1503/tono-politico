@@ -5,7 +5,10 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal, TypeAlias
+from typing import TYPE_CHECKING, Any, Literal, TypeAlias
+
+if TYPE_CHECKING:
+    from tono_politico.speech2text.models import ActorTranscript
 
 SCHEMA_VERSION = "tono-politico.run.v1"
 
@@ -23,6 +26,18 @@ ArtifactKey: TypeAlias = Literal[
     "enfoques_path",
 ]
 StageStatus: TypeAlias = Literal["ok", "failed", "skipped"]
+UnitStatus: TypeAlias = Literal["ok", "failed", "skipped"]
+
+UNIT_REASON_CODES: tuple[str, ...] = (
+    "transcript_persisted",
+    "resumed_from_artifact",
+    "reference_profile_missing",
+    "download_failed",
+    "audio_invalid",
+    "actor_not_identified",
+    "asr_empty",
+    "transcript_invalid",
+)
 
 STAGE_NAMES: tuple[StageName, ...] = (
     "speech2text",
@@ -69,49 +84,30 @@ class ProjectExecutionConfig:
 
 
 @dataclass(frozen=True)
-class AudioFetcherExecutionConfig:
-    enabled: bool = True
-    force_download: bool = False
-    playlist_dir_template: str = "{playlist}"
-    audio_dir_template: str = "videos-{playlist}"
-
-
-@dataclass(frozen=True)
 class ReferenceVoiceConfig:
-    origen: str = "misma_playlist"
-    max_audios: int = 1
     video_id: str = "su9nURIj9XQ"
-    url: str | None = "https://www.youtube.com/watch?v=su9nURIj9XQ&list=PLE9Zk7g9R__M&index=8"
-    cache: str = "solo_ejecucion"
 
 
 @dataclass(frozen=True)
 class SpeakerTimestampsExecutionConfig:
-    enabled: bool = True
     actor_objetivo: str = "Lilly Téllez"
     pipeline: str = "pyannote/speaker-diarization-community-1"
     fallback_pipeline: str | None = "pyannote-community/speaker-diarization-community-1"
     device: str = "auto"
     umbral_match: float = 0.5
     umbral_ambiguo: float = 0.7
-    match_ambiguo: str = "descartar_como_otro_speaker"
     referencia_voz: ReferenceVoiceConfig = field(default_factory=ReferenceVoiceConfig)
 
 
 @dataclass(frozen=True)
 class TranscribeSpeechExecutionConfig:
-    enabled: bool = True
     whisper_model: str = "large-v3-turbo"
     idioma: str = "es"
-    word_timestamps: bool = False
-    force_retranscribe: bool = False
-    skip_existing_transcripts: bool = True
 
 
 @dataclass(frozen=True)
 class SpeechToTextExecutionConfig:
     enabled: bool = True
-    audio_fetcher: AudioFetcherExecutionConfig = field(default_factory=AudioFetcherExecutionConfig)
     speaker_timestamps: SpeakerTimestampsExecutionConfig = field(
         default_factory=SpeakerTimestampsExecutionConfig
     )
@@ -231,10 +227,10 @@ class RunConfig:
             run=RunSettings(
                 id=_optional_str(run_data.get("id")),
                 stages=stages,
-                resume=bool(run_data.get("resume", True)),
-                overwrite=bool(run_data.get("overwrite", False)),
-                keep_cache=bool(run_data.get("keep_cache", False)),
-                fail_fast=bool(run_data.get("fail_fast", False)),
+                resume=_bool(run_data.get("resume"), "run.resume", True),
+                overwrite=_bool(run_data.get("overwrite"), "run.overwrite", False),
+                keep_cache=_bool(run_data.get("keep_cache"), "run.keep_cache", False),
+                fail_fast=_bool(run_data.get("fail_fast"), "run.fail_fast", False),
                 max_videos=_optional_int(run_data.get("max_videos")),
                 only_video_ids=_string_list(
                     run_data.get("only_video_ids", []),
@@ -251,8 +247,16 @@ class RunConfig:
             output=OutputConfig(
                 base_dir=_path(output_data.get("base_dir", "output")),
                 run_dir=_optional_path(output_data.get("run_dir")),
-                persist_resolved_config=bool(output_data.get("persist_resolved_config", True)),
-                persist_manifest=bool(output_data.get("persist_manifest", True)),
+                persist_resolved_config=_bool(
+                    output_data.get("persist_resolved_config"),
+                    "output.persist_resolved_config",
+                    True,
+                ),
+                persist_manifest=_bool(
+                    output_data.get("persist_manifest"),
+                    "output.persist_manifest",
+                    True,
+                ),
             ),
             project=ProjectExecutionConfig(
                 data_dir=_path(project_data.get("data_dir", "data")),
@@ -275,6 +279,7 @@ class ArtifactPaths:
     manifest_path: Path
     resolved_config_path: Path
     actor_transcripts_dir: Path
+    speech2text_quality_path: Path
     argumentos_path: Path
     temas_path: Path
     enfoques_path: Path
@@ -307,11 +312,28 @@ class StageResult:
 
 
 @dataclass(frozen=True)
+class UnitResult:
+    """Resultado terminal de un vídeo seleccionado.
+
+    ``ActorTranscript`` conserva únicamente contenido de dominio. El estado,
+    la razón y los timings de ejecución viven aquí, en el control plane.
+    """
+
+    video_id: str
+    status: UnitStatus
+    reason_code: str
+    transcript: ActorTranscript | None = None
+    timings: dict[str, float] = field(default_factory=dict)
+    error: str | None = None
+
+
+@dataclass(frozen=True)
 class ExecutionResult:
     exit_code: int
     plan: ExecutionPlan
     stage_results: list[StageResult] = field(default_factory=list)
     manifest_path: Path | None = None
+    unit_results: list[UnitResult] = field(default_factory=list)
 
 
 def _speech2text_from_mapping(
@@ -319,18 +341,10 @@ def _speech2text_from_mapping(
     speaker_data: Mapping[str, Any],
     ref_data: Mapping[str, Any],
 ) -> SpeechToTextExecutionConfig:
-    audio_data = _section(speech_data, "audio_fetcher")
     transcribe_data = _section(speech_data, "transcribe_speech")
     return SpeechToTextExecutionConfig(
-        enabled=bool(speech_data.get("enabled", True)),
-        audio_fetcher=AudioFetcherExecutionConfig(
-            enabled=bool(audio_data.get("enabled", True)),
-            force_download=bool(audio_data.get("force_download", False)),
-            playlist_dir_template=str(audio_data.get("playlist_dir_template", "{playlist}")),
-            audio_dir_template=str(audio_data.get("audio_dir_template", "videos-{playlist}")),
-        ),
+        enabled=_bool(speech_data.get("enabled"), "speech2text.enabled", True),
         speaker_timestamps=SpeakerTimestampsExecutionConfig(
-            enabled=bool(speaker_data.get("enabled", True)),
             actor_objetivo=str(speaker_data.get("actor_objetivo", "Lilly Téllez")),
             pipeline=str(speaker_data.get("pipeline", "pyannote/speaker-diarization-community-1")),
             fallback_pipeline=_optional_str(
@@ -342,22 +356,13 @@ def _speech2text_from_mapping(
             device=str(speaker_data.get("device", "auto")),
             umbral_match=float(speaker_data.get("umbral_match", 0.5)),
             umbral_ambiguo=float(speaker_data.get("umbral_ambiguo", 0.7)),
-            match_ambiguo=str(speaker_data.get("match_ambiguo", "descartar_como_otro_speaker")),
             referencia_voz=ReferenceVoiceConfig(
-                origen=str(ref_data.get("origen", "misma_playlist")),
-                max_audios=int(ref_data.get("max_audios", 1)),
                 video_id=str(ref_data.get("video_id", "su9nURIj9XQ")),
-                url=_optional_str(ref_data.get("url", ReferenceVoiceConfig().url)),
-                cache=str(ref_data.get("cache", "solo_ejecucion")),
             ),
         ),
         transcribe_speech=TranscribeSpeechExecutionConfig(
-            enabled=bool(transcribe_data.get("enabled", True)),
             whisper_model=str(transcribe_data.get("whisper_model", "large-v3-turbo")),
             idioma=str(transcribe_data.get("idioma", "es")),
-            word_timestamps=bool(transcribe_data.get("word_timestamps", False)),
-            force_retranscribe=bool(transcribe_data.get("force_retranscribe", False)),
-            skip_existing_transcripts=bool(transcribe_data.get("skip_existing_transcripts", True)),
         ),
     )
 
@@ -370,14 +375,22 @@ def _discursive_from_mapping(
 ) -> DiscursiveApproachExecutionConfig:
     topics_approach_data = _section(discursive_data, "topics_approach")
     return DiscursiveApproachExecutionConfig(
-        enabled=bool(discursive_data.get("enabled", True)),
+        enabled=_bool(discursive_data.get("enabled"), "discursive_approach.enabled", True),
         input=DiscursiveInputConfig(
             source=str(input_data.get("source", "previous_stage")),
             actor_transcripts_dir=_optional_path(input_data.get("actor_transcripts_dir")),
         ),
         argument_shape=ArgumentShapeExecutionConfig(
-            enabled=bool(argument_shape_data.get("enabled", True)),
-            force=bool(argument_shape_data.get("force", False)),
+            enabled=_bool(
+                argument_shape_data.get("enabled"),
+                "discursive_approach.argument_shape.enabled",
+                True,
+            ),
+            force=_bool(
+                argument_shape_data.get("force"),
+                "discursive_approach.argument_shape.force",
+                False,
+            ),
             spacy_model=str(argument_shape_data.get("spacy_model", "es_core_news_lg")),
             embedding_model=str(
                 argument_shape_data.get("embedding_model", "LiquidAI/LFM2.5-Embedding-350M")
@@ -389,8 +402,16 @@ def _discursive_from_mapping(
         ),
         topics_cluster=_topics_cluster_from_mapping(topics_cluster_data),
         topics_approach=TopicsApproachExecutionConfig(
-            enabled=bool(topics_approach_data.get("enabled", True)),
-            force=bool(topics_approach_data.get("force", False)),
+            enabled=_bool(
+                topics_approach_data.get("enabled"),
+                "discursive_approach.topics_approach.enabled",
+                True,
+            ),
+            force=_bool(
+                topics_approach_data.get("force"),
+                "discursive_approach.topics_approach.force",
+                False,
+            ),
         ),
     )
 
@@ -400,8 +421,8 @@ def _topics_cluster_from_mapping(data: Mapping[str, Any]) -> TopicsClusterExecut
     hdbscan_data = _section(data, "hdbscan")
     bertopic_data = _section(data, "bertopic")
     return TopicsClusterExecutionConfig(
-        enabled=bool(data.get("enabled", True)),
-        force=bool(data.get("force", False)),
+        enabled=_bool(data.get("enabled"), "discursive_approach.topics_cluster.enabled", True),
+        force=_bool(data.get("force"), "discursive_approach.topics_cluster.force", False),
         embedding_model=str(data.get("embedding_model", "LiquidAI/LFM2.5-Embedding-350M")),
         min_topic_size=int(data.get("min_topic_size", 3)),
         n_neighbors=int(data.get("n_neighbors", 10)),
@@ -417,10 +438,26 @@ def _topics_cluster_from_mapping(data: Mapping[str, Any]) -> TopicsClusterExecut
         ),
         bertopic=BertopicExecutionConfig(
             language=str(bertopic_data.get("language", "spanish")),
-            calculate_probabilities=bool(bertopic_data.get("calculate_probabilities", False)),
-            verbose=bool(bertopic_data.get("verbose", False)),
+            calculate_probabilities=_bool(
+                bertopic_data.get("calculate_probabilities"),
+                "discursive_approach.topics_cluster.bertopic.calculate_probabilities",
+                False,
+            ),
+            verbose=_bool(
+                bertopic_data.get("verbose"),
+                "discursive_approach.topics_cluster.bertopic.verbose",
+                False,
+            ),
         ),
     )
+
+
+def _bool(value: Any, path: str, default: bool) -> bool:
+    if value is None:
+        return default
+    if not isinstance(value, bool):
+        raise ValueError(f"{path} debe ser booleano, no {type(value).__name__}")
+    return value
 
 
 def _section(data: Mapping[str, Any], key: str) -> Mapping[str, Any]:

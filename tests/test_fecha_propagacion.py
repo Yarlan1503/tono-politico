@@ -7,11 +7,11 @@ from pathlib import Path
 from tono_politico.discursive_approach.argument_shape.service import ArgumentShapeService
 from tono_politico.speech2text.audio_fetcher.models import AudioVideo
 from tono_politico.speech2text.models import TurnoOrador
-from tono_politico.speech2text.transcribe_speech.service import TranscribeSpeechService
-from tono_politico.speech2text.transcribe_speech.transcripcion_actor import (
+from tono_politico.speech2text.transcribe_speech.actor_clip import (
     ClipTranscriptSegment,
     transcribir_turnos_actor,
 )
+from tono_politico.speech2text.transcribe_speech.service import TranscribeSpeechService
 
 
 class FakeTranscriber:

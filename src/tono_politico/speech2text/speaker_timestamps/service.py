@@ -10,17 +10,143 @@ from __future__ import annotations
 
 import logging
 import os
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from tono_politico.speech2text.audio_fetcher.models import AudioVideo
 
 from ..models import PerfilVozActor, TurnoOrador
-from .adapter import load_pyannote_pipeline, run_pyannote_pipeline
 from .matching import identificar_actor
 from .perfil_voz import construir_perfil_desde_output
 
 logger = logging.getLogger(__name__)
+
+
+class PyannotePipelineLoadError(RuntimeError):
+    """Error accionable al no poder cargar ningún pipeline pyannote."""
+
+
+@dataclass(frozen=True)
+class LoadedPyannotePipeline:
+    pipeline: Any
+    pipeline_name: str
+    used_fallback: bool = False
+
+
+def load_pyannote_pipeline(
+    primary_pipeline: str,
+    fallback_pipeline: str | None = None,
+    token: str | None = None,
+    device: str = "auto",
+    pipeline_cls: Any | None = None,
+    torch_module: Any | None = None,
+) -> LoadedPyannotePipeline:
+    """Carga el pipeline primary y usa fallback opcional sin filtrar tokens."""
+    if pipeline_cls is None:
+        pipeline_cls = _import_pipeline_cls()
+    primary_error: Exception | None = None
+
+    try:
+        pipeline = pipeline_cls.from_pretrained(primary_pipeline, token=token)
+        _apply_device(pipeline, device, torch_module)
+        return LoadedPyannotePipeline(pipeline, primary_pipeline, False)
+    except Exception as exc:
+        primary_error = exc
+        if not fallback_pipeline:
+            raise _load_error(primary_pipeline, None, primary_error, None) from primary_error
+        logger.warning(
+            "No se pudo cargar pipeline pyannote principal '%s': %s",
+            primary_pipeline,
+            primary_error,
+        )
+
+    try:
+        pipeline = pipeline_cls.from_pretrained(fallback_pipeline, token=token)
+        _apply_device(pipeline, device, torch_module)
+        return LoadedPyannotePipeline(pipeline, fallback_pipeline, True)
+    except Exception as fallback_error:
+        assert primary_error is not None
+        raise _load_error(
+            primary_pipeline,
+            fallback_pipeline,
+            primary_error,
+            fallback_error,
+        ) from fallback_error
+
+
+def run_pyannote_pipeline(
+    pipeline: Any,
+    audio_path: str,
+    progress_hook_cls: Any | None = "auto",
+) -> Any:
+    """Ejecuta pyannote usando ProgressHook si está disponible."""
+    if progress_hook_cls == "auto":
+        progress_hook_cls = _import_progress_hook_cls()
+    if progress_hook_cls is None:
+        return pipeline(str(audio_path))
+    with progress_hook_cls() as hook:
+        return pipeline(str(audio_path), hook=hook)
+
+
+def _import_pipeline_cls() -> Any:
+    from pyannote.audio import Pipeline  # type: ignore[import-not-found]
+
+    return Pipeline
+
+
+def _import_progress_hook_cls() -> Any | None:
+    try:
+        from pyannote.audio.pipelines.utils.hook import (
+            ProgressHook,  # type: ignore[import-not-found]
+        )
+    except Exception:
+        return None
+    return ProgressHook
+
+
+def _apply_device(pipeline: Any, device: str, torch_module: Any | None) -> None:
+    if not hasattr(pipeline, "to"):
+        return
+    torch_module = torch_module or _import_torch_module()
+    if torch_module is None:
+        return
+    resolved = _resolve_device(device, torch_module)
+    if resolved is not None:
+        pipeline.to(resolved)
+
+
+def _resolve_device(device: str, torch_module: Any) -> Any | None:
+    if device == "none":
+        return None
+    target = "cuda" if device == "auto" and torch_module.cuda.is_available() else device
+    if device == "auto":
+        target = "cuda" if torch_module.cuda.is_available() else "cpu"
+    return torch_module.device(target)
+
+
+def _import_torch_module() -> Any | None:
+    try:
+        import torch  # type: ignore[import-not-found]
+    except Exception:
+        return None
+    return torch
+
+
+def _load_error(
+    primary_pipeline: str,
+    fallback_pipeline: str | None,
+    primary_error: Exception,
+    fallback_error: Exception | None,
+) -> PyannotePipelineLoadError:
+    fallback_msg = (
+        f"; fallback '{fallback_pipeline}' falló: {fallback_error}" if fallback_pipeline else ""
+    )
+    return PyannotePipelineLoadError(
+        "No se pudo cargar ningún pipeline de diarización pyannote. "
+        f"Principal '{primary_pipeline}' falló: {primary_error}"
+        f"{fallback_msg}. Verifica acceso/condiciones de Hugging Face y token local."
+    )
 
 
 class SpeakerTimestampsService:
@@ -131,15 +257,22 @@ class SpeakerTimestampsService:
 
 def _extraer_turnos(output: Any, video_id: str) -> list[TurnoOrador]:
     turnos: list[TurnoOrador] = []
-    for segment, _track, speaker in output.exclusive_speaker_diarization.itertracks(
-        yield_label=True
-    ):
+    diarization = getattr(output, "exclusive_speaker_diarization", None)
+    if diarization is None or not hasattr(diarization, "itertracks"):
+        raise ValueError("output no contiene exclusive_speaker_diarization iterable")
+    for segment, _track, speaker in diarization.itertracks(yield_label=True):
+        t_start = float(segment.start)
+        t_end = float(segment.end)
+        if t_start < 0 or t_end <= t_start:
+            raise ValueError("turno inválido: t_end debe ser mayor que t_start")
+        if not speaker:
+            raise ValueError("turno inválido: speaker vacío")
         turnos.append(
             TurnoOrador(
                 video_id=video_id,
-                speaker_id=speaker,
-                t_start=segment.start,
-                t_end=segment.end,
+                speaker_id=str(speaker),
+                t_start=t_start,
+                t_end=t_end,
             )
         )
     return turnos
@@ -148,15 +281,28 @@ def _extraer_turnos(output: Any, video_id: str) -> list[TurnoOrador]:
 def _extraer_embeddings(output: Any) -> dict[str, list[float]]:
     import numpy as np
 
-    labels = list(output.speaker_diarization.labels())
-    embs = output.speaker_embeddings
-    if embs is None or len(embs) == 0:
+    diarization = getattr(output, "speaker_diarization", None)
+    if diarization is None or not hasattr(diarization, "labels"):
+        raise ValueError("output no contiene speaker_diarization.labels")
+    labels = list(diarization.labels())
+    embs = getattr(output, "speaker_embeddings", None)
+    if embs is None:
         return {}
+    if len(embs) != len(labels):
+        raise ValueError(
+            f"cantidad de embeddings inconsistente con labels: {len(embs)} != {len(labels)}"
+        )
 
     result: dict[str, list[float]] = {}
-    for i, label in enumerate(labels):
-        emb = np.array(embs[i]).flatten()
-        result[label] = emb.tolist()
+    for label, raw_embedding in zip(labels, embs, strict=True):
+        if raw_embedding is None:
+            raise ValueError(f"embedding ausente para speaker {label}")
+        emb = np.asarray(raw_embedding, dtype=float).reshape(-1)
+        if emb.size == 0:
+            raise ValueError(f"embedding vacío para speaker {label}")
+        if not np.isfinite(emb).all():
+            raise ValueError(f"embedding no finito para speaker {label}")
+        result[str(label)] = emb.tolist()
     return result
 
 

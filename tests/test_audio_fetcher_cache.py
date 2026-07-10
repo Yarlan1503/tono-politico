@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from tono_politico.speech2text.audio_fetcher.cache import (
+from tono_politico.speech2text.audio_fetcher.audio import (
     DATA_DIR,
     ruta_audio,
     ruta_dir_videos,
@@ -29,7 +29,7 @@ def test_ruta_audio(tmp_path: Path) -> None:
 
 def test_sin_rutas_de_transcripcion() -> None:
     """audio_fetcher no debe exponer rutas de transcripciones JSON."""
-    import tono_politico.speech2text.audio_fetcher.cache as cache_mod
+    import tono_politico.speech2text.audio_fetcher.audio as audio_mod
 
-    assert not hasattr(cache_mod, "ruta_transcripcion")
-    assert not hasattr(cache_mod, "ruta_dir_transcripciones")
+    assert not hasattr(audio_mod, "ruta_transcripcion")
+    assert not hasattr(audio_mod, "ruta_dir_transcripciones")

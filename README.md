@@ -13,7 +13,7 @@ speech2text
 discursive_approach
   argument_shape        1 audio → Argumento[] (spaCy + LFM2.5)
   topics_cluster        corpus → ResultadoTemas (BERTopic)
-  topics_approach       temas → ResultadoEnfoques (base = Tono + firmas)
+  topics_approach       bloqueado hasta reconstruir sus contratos
         → output/<run_id>/manifest.json + artefactos durables
 ```
 
@@ -21,21 +21,19 @@ discursive_approach
 
 | Componente | Estado | Tests (aprox.) | Salida |
 |---|---|---:|---|
-| **speech2text** | ✅ + smoke real | 42 | `ActorTranscript` turn-level (+ fecha) |
+| **speech2text** | ✅ + smoke real | 67 | `ActorTranscript` turn-level (+ fecha) + `quality.json` |
 | · audio_fetcher | ✅ | (suite speech2text) | `VideoMeta`, `.wav` cache |
 | · speaker_timestamps | ✅ | (suite speech2text) | `TurnoOrador[]` actor |
 | · transcribe_speech | ✅ | (suite speech2text) | `ActorTranscript` |
-| **discursive_approach** | ✅ | ~31 | `ResultadoEnfoques` |
-| · argument_shape | ✅ | (suite discursive) | `Argumento[]` |
-| · topics_cluster | ✅ | (suite discursive) | `ResultadoTemas` |
-| · topics_approach | ✅ | (suite discursive) | `ResultadoEnfoques` (Tono + firmas) |
+| **discursive_approach** | ⚠️ bloqueado | — | Pendiente de desacoplar/reconstruir |
+| · argument_shape | ⚠️ bloqueado | — | Ruta dependiente temporalmente inactiva |
+| · topics_cluster | ⚠️ bloqueado | — | Ruta dependiente temporalmente inactiva |
+| · topics_approach | ⚠️ bloqueado | — | Depende de lógica retirada |
 | **execution** (control plane) | ✅ | 30 | `RunConfig`, `ExecutionPlan`, artefactos |
-| **tono** (stack de inferencia) | ✅ | ~20 | `ResultadoTono` (base de approaches) |
-| **diarizacion** (DTOs + utils) | ✅ | ~20 | DTOs reusados por speech2text |
 
-Verificación local: **`218 passed`** (`-m "not slow"`, 4 slow deselected). Gate: `bash check.sh`.
+Verificación local: **`221 passed, 1 skipped, 4 deselected`** (`-m "not slow"`). Gate: `bash check.sh`.
 
-**Smoke real (Play-PoliTest):** 7/7 videos, 195 turnos del actor, 1961 palabras, 4 tópicos, 19 enfoques. ~66 min en CPU.
+**Smoke real de speech2text (Play-PoliTest):** 7/7 videos, 195 turnos del actor. `discursive_approach` queda bloqueado hasta reconstruir sus dependencias.
 
 Limpieza: `bash clean.sh` (output/ + data/ + caches Python). Filtros: `--output`, `--data`, `--caches`. Dry-run: `--dry-run`. Sin confirmación: `-y`.
 
@@ -50,10 +48,10 @@ uv run python main.py --config config/config.yaml --dry-run
 
 # Ejecutar pipeline completo
 uv run python main.py --config config/config.yaml
-# → output/<run_id>/speech2text/actor_transcripts/ + discursive/*.json + manifest.json
+# → output/<run_id>/speech2text/actor_transcripts/ + speech2text/quality.json + manifest.json
 ```
 
-`run.stages` define `speech2text` → `argument_shape` → `topics_cluster` → `topics_approach`, con artefactos durables en `output/<run_id>/`. Permite `--dry-run`, `--validate-config`, reanudar por artefactos, recomputar etapas con `force`/`overwrite`, limitar smoke runs con `run.max_videos` / `run.only_video_ids`, y controlar cache `.wav` con `run.keep_cache`.
+`run.stages` conserva la secuencia declarativa `speech2text` → `argument_shape` → `topics_cluster` → `topics_approach`, pero las etapas discursivas quedan bloqueadas hasta reconstruir sus contratos. La ruta activa es `speech2text`; permite `--dry-run`, `--validate-config`, reanudar por artefactos, recomputar con `run.overwrite`, limitar smoke runs con `run.max_videos` / `run.only_video_ids`, y controlar cache `.wav` con `run.keep_cache`.
 
 ## speech2text — audio → texto del actor
 
@@ -67,37 +65,18 @@ por video: fetch_one → speaker_timestamps → transcribe_speech
 - **audio_fetcher:** yt-dlp playlist + `.wav` (cache en `data/<playlist>/videos-…/`).
 - **speaker_timestamps:** Community-1 `exclusive_speaker_diarization` + match coseno al perfil (0.5 / 0.7).
 - **transcribe_speech:** Whisper `large-v3-turbo` **solo en clips del actor**, `word_timestamps=False`.
-- Doc: [`docs/componente-speech2text.md`](docs/componente-speech2text.md).
+- Doc: [`docs/module-speech2text.md`](docs/module-speech2text.md).
 
-### Diarización / actor (detalle técnico)
+### `speaker_timestamps` / actor (detalle técnico)
 
 - **Modelo:** primary `pyannote/speaker-diarization-community-1`; fallback `pyannote-community/speaker-diarization-community-1`.
 - **Device:** `auto` (CUDA si hay, si no CPU) + `ProgressHook` cuando existe.
 - **Embeddings:** `output.speaker_embeddings` del pipeline (sin modelo aparte).
 - **Match:** distancia coseno; ambiguo 0.5–0.7 → descartar.
 
-## Tono — arquitectura híbrida
+## Estado de `discursive_approach`
 
-El análisis de tono usa dos enfoques complementarios de la familia Liquid AI:
-
-**Embeddings** (`LFM2.5-Embedding-350M` con mean pooling manual):
-
-| Dimensión | Labels |Qué mide |
-|---|---|---|
-| Lógica política | 6 | nacionalista, globalista, populista, tecnócrata, corporativista, estatista |
-| Sentimiento | 5 | esperanza, angustia, indignación, orgullo, empatía |
-| Estilo discursivo | 6 | directo, académico, confrontativo, conciliador, catastrofista, testimonial |
-| Función discursiva | 3 | crítica, propuesta, narrativa personal |
-| Intensidad antagónica | 5 niveles | escala 1 (conciliador) a 5 (beligerante) |
-
-**LLM** (`LFM2.5-1.2B-Instruct`):
-
-| Dimensión | Qué mide |
-|---|---|
-| Stance | apoyo o rechazo respecto al tema evaluado, con contexto del actor |
-
-Cada label de embeddings se evalúa independientemente mediante similitud coseno contra
-prototipos textuales en español. El LLM razona stance con actor + tema + few-shot balanceado.
+La ruta `argument_shape → topics_cluster → topics_approach` queda temporalmente bloqueada porque sus adaptadores todavía dependían de `filtrado`, `segmentacion`, `temas` y `tono`. Se reconstruirá en una fase posterior con contratos propios.
 
 ## Decisiones de arquitectura
 
@@ -106,8 +85,7 @@ prototipos textuales en español. El LLM razona stance con actor + tema + few-sh
 - **Lazy loading:** Whisper, spaCy, BERTopic, pyannote y modelos LFM2.5 se cargan solo cuando se usan. El CLI no importa módulos pesados al parsear args.
 - **ASR:** `large-v3-turbo` en **clips del actor** con `word_timestamps=False` (timestamps de turno desde pyannote).
 - **Diarización:** primary `pyannote/speaker-diarization-community-1`, fallback `pyannote-community/speaker-diarization-community-1`, `device=auto`. Actor identificado con perfil de voz cacheado durante la ejecución.
-- **Embeddings compartidos:** `discursive_approach` y `tono` usan `LiquidAI/LFM2.5-Embedding-350M`.
-- **Mean pooling manual:** `sentence-transformers` produce embeddings degenerados con LFM2.5; se usa `AutoModel` directo con mean pooling.
+- **discursive_approach:** bloqueado temporalmente tras retirar sus dependencias legacy; no se ejecuta como parte del pipeline válido actual.
 
 ## Estructura del código
 
@@ -117,48 +95,38 @@ src/tono_politico/
 │   ├── runner.py          # ExecutionRunner
 │   ├── config.py          # load_run_config
 │   ├── plan.py            # build_execution_plan
-│   ├── artifacts.py       # resolve_artifacts
+│   ├── artifacts.py       # resolve_artifacts + serialización ActorTranscript
 │   ├── validation.py      # validate_run_config
-│   └── models.py          # RunConfig, StageResult, ExecutionPlan
+│   ├── observability.py   # build_quality_report (speech2text_quality.v2)
+│   └── models.py          # RunConfig, StageResult, ExecutionPlan, UnitResult
 ├── speech2text/           # autocontenido: audio → ActorTranscript ✅
 │   ├── service.py         # SpeechToTextService
 │   ├── models.py          # ActorTranscript, TurnoOrador, PerfilVozActor, SpeakerMatch
-│   ├── actor_transcript.py # Serialización JSON actor_transcript.v1
 │   ├── requisitos.md      # checklist + viabilidad
 │   ├── audio_fetcher/     # playlist + descarga .wav
-│   │   ├── models.py      # VideoMeta, AudioVideo, DownloadResult, PlaylistInfo, VideoInfo
-│   │   ├── cache.py       # rutas .wav
+│   │   ├── models.py      # VideoMeta, AudioVideo, DownloadResult, PlaylistInfo
 │   │   ├── playlist.py    # obtener_info_playlist
 │   │   ├── audio.py       # descarga + cache
 │   │   └── service.py     # AudioFetcherService
 │   ├── speaker_timestamps/# pyannote + match actor (diarización del actor)
-│   │   ├── service.py     # SpeakerTimestampsService
-│   │   ├── adapter.py     # load_pyannote_pipeline
-│   │   ├── matching.py    # identificar_actor, clasificar_speaker
+│   │   ├── service.py     # SpeakerTimestampsService + load_pyannote_pipeline
+│   │   ├── matching.py    # identificar_actor, clasificar_speaker, distancia_coseno
 │   │   └── perfil_voz.py  # construir_perfil_desde_output
 │   └── transcribe_speech/ # Whisper clips actor-only → ActorTranscript
 │       ├── service.py     # TranscribeSpeechService
-│       ├── whisper_clip.py    # WhisperFfmpegClipTranscriber
-│       └── transcripcion_actor.py
-├── discursive_approach/   # ActorTranscript → temas + enfoques ✅
+│       ├── actor_clip.py  # padding y mapeo temporal de clips
+│       ├── transcription_clip.py # WhisperFfmpegClipTranscriber
+│       └── models.py      # ClipTranscriptSegment, ClipTranscriber
+├── discursive_approach/   # ActorTranscript → temas + enfoques ⚠️ bloqueado
 │   ├── service.py         # DiscursiveApproachService
 │   ├── requisitos.md      # decisiones 1–9 + checklist
 │   ├── argument_shape/    # Oracion/Argumento (spaCy + LFM2.5)
 │   ├── topics_cluster/    # BERTopic sobre Argumento[]
-│   └── topics_approach/   # Tono + firmas → ResultadoEnfoques
-├── tono/                  # Stack de inferencia de tono (reusado por topics_approach)
-│   ├── service.py         # TonoService (orquestador híbrido)
-│   ├── embeddings.py      # EmbeddorTono + similitud coseno
-│   ├── zero_shot.py       # ClasificadorLLM para stance
-│   ├── taxonomia.py       # 25 prototipos en 5 dimensiones
-│   └── models.py          # ResultadoTono, SegmentoConTono
-├── segmentacion/models.py # DTOs: Segmento, Oracion, WordTimestamp
-├── temas/models.py        # DTOs: ResultadoTemas, TopicoInfo
-└── filtrado/models.py     # DTOs: ResultadoFiltrado, SegmentoFiltrado
+│   └── topics_approach/   # pendiente de reconstrucción
 main.py                    # CLI entry point — delega a ExecutionRunner
 ```
 
-> **Nota:** `segmentacion/models.py`, `temas/models.py` y `filtrado/models.py` contienen solo DTOs que `tono/` y `topics_approach/adapter.py` referencian. Se consolidarán en la Fase 2 del desacoplamiento de `discursive_approach`.
+> **Nota:** `discursive_approach` conserva código histórico incompleto, pero sus dependencias `filtrado`, `segmentacion`, `temas` y `tono` fueron eliminadas deliberadamente. Su reparación queda fuera de esta fase.
 
 ## Configuración
 
@@ -246,7 +214,9 @@ Doc: [`docs/componente-discursive-approach.md`](docs/componente-discursive-appro
 
 ## Documentación técnica
 
-- [**speech2text**](docs/componente-speech2text.md)
+- [**speech2text**](docs/module-speech2text.md)
+- [audio_fetcher](docs/component_audio_fetcher.md)
+- [speaker_timestamps](docs/component_speaker_timestamps.md)
+- [transcribe_speech](docs/component_transcribe_speech.md)
 - [**discursive_approach**](docs/componente-discursive-approach.md)
-- [Diarización (stack interno)](docs/componente-diarizacion.md)
 - [Configuración](docs/configuracion.md)

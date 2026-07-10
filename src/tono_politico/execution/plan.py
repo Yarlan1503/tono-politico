@@ -57,10 +57,7 @@ def _stage_enabled(cfg: RunConfig, stage: StageName) -> bool:
 
 def _stage_force(cfg: RunConfig, stage: StageName) -> bool:
     if stage == "speech2text":
-        return (
-            cfg.speech2text.audio_fetcher.force_download
-            or cfg.speech2text.transcribe_speech.force_retranscribe
-        )
+        return False
     if stage == "argument_shape":
         return cfg.discursive_approach.argument_shape.force
     if stage == "topics_cluster":

@@ -9,6 +9,7 @@ import pytest
 from tono_politico.speech2text.audio_fetcher.models import (
     AudioVideo,
     DownloadResult,
+    PlaylistInfo,
     VideoMeta,
 )
 
@@ -26,6 +27,14 @@ def test_video_meta_fields() -> None:
     assert meta.titulo == "Discurso ejemplo"
     assert meta.fecha == "20240115"
     assert meta.duracion == 3600.5
+
+
+def test_playlist_info_solo_expone_nombre() -> None:
+    playlist = PlaylistInfo(nombre="Playlist")
+
+    assert playlist.nombre == "Playlist"
+    assert not hasattr(playlist, "url")
+    assert not hasattr(playlist, "videos")
 
 
 def test_video_meta_fecha_opcional() -> None:

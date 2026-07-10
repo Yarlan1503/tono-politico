@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from tono_politico.discursive_approach.argument_shape.service import ArgumentShapeService
-from tono_politico.speech2text.actor_transcript import cargar_actor_transcript
+from tono_politico.execution.artifacts import cargar_actor_transcript
 
 SMOKE_DIR = (
     Path(__file__).resolve().parents[1] / "output" / "speech2text-smoke" / "actor_transcripts"

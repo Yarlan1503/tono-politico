@@ -68,7 +68,18 @@ class TestDescargarAudioResult:
         assert result.path is None
         assert "Timeout" in (result.error or "")
 
-    def test_stderr_error(self, tmp_path: Path) -> None:
+    def test_binario_ausente(self, tmp_path: Path) -> None:
+        with patch(
+            "tono_politico.speech2text.audio_fetcher.audio.subprocess.run",
+            side_effect=FileNotFoundError("yt-dlp"),
+        ):
+            result = descargar_audio_result(_meta(), "P", tmp_path)
+
+        assert result.ok is False
+        assert result.path is None
+        assert "yt-dlp" in (result.error or "")
+
+    def test_exit_code_no_cero(self, tmp_path: Path) -> None:
         with patch(
             "tono_politico.speech2text.audio_fetcher.audio.subprocess.run",
             return_value=subprocess.CompletedProcess(
@@ -76,5 +87,7 @@ class TestDescargarAudioResult:
             ),
         ):
             result = descargar_audio_result(_meta(), "P", tmp_path)
+
         assert result.ok is False
+        assert result.path is None
         assert "403" in (result.error or "")

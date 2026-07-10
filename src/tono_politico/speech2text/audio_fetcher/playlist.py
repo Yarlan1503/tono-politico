@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import re
 import subprocess
+from datetime import datetime
 
 from .models import PlaylistInfo, VideoMeta
 
@@ -20,6 +22,39 @@ def sanitizar_nombre_directorio(nombre: str) -> str:
     return nombre or "playlist_sin_nombre"
 
 
+def _normalizar_fecha(data: dict[str, object]) -> str | None:
+    """Obtiene una fecha válida priorizando upload_date sobre release_date."""
+    for field in ("upload_date", "release_date"):
+        value = data.get(field)
+        if not isinstance(value, str) or value in {"", "NA"}:
+            continue
+        try:
+            datetime.strptime(value, "%Y%m%d")
+        except ValueError:
+            logger.warning("Fecha inválida en %s: %r", field, value)
+            continue
+        return value
+    return None
+
+
+def _normalizar_duracion(value: object) -> float:
+    """Normaliza duración de yt-dlp; valores inválidos se tratan como ausentes."""
+    if value is None:
+        return 0.0
+    if not isinstance(value, (int, float, str)):
+        logger.warning("Duración inválida: %r", value)
+        return 0.0
+    try:
+        duracion = float(value)
+    except (TypeError, ValueError):
+        logger.warning("Duración inválida: %r", value)
+        return 0.0
+    if duracion < 0 or not math.isfinite(duracion):
+        logger.warning("Duración inválida: %r", value)
+        return 0.0
+    return duracion
+
+
 def obtener_info_playlist(url: str) -> tuple[PlaylistInfo, list[VideoMeta]]:
     """Obtiene metadatos de una playlist sin descargar audio.
 
@@ -27,8 +62,6 @@ def obtener_info_playlist(url: str) -> tuple[PlaylistInfo, list[VideoMeta]]:
         Tupla ``(PlaylistInfo, list[VideoMeta])``.
 
         - ``PlaylistInfo.nombre``: nombre sanitizado de la playlist.
-          (Campos legacy ``url`` / ``videos`` se rellenan de forma mínima
-          hasta el slim-down completo de ``models.py`` compartido.)
         - ``list[VideoMeta]``: videos con id/url/titulo/fecha/duracion.
 
     Raises:
@@ -44,7 +77,12 @@ def obtener_info_playlist(url: str) -> tuple[PlaylistInfo, list[VideoMeta]]:
         url,
     ]
 
-    resultado = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+    try:
+        resultado = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+    except FileNotFoundError as exc:
+        raise RuntimeError("yt-dlp no está instalado o no está en PATH") from exc
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError("yt-dlp timeout al obtener la información de la playlist") from exc
 
     if resultado.returncode != 0:
         raise RuntimeError(
@@ -71,10 +109,8 @@ def obtener_info_playlist(url: str) -> tuple[PlaylistInfo, list[VideoMeta]]:
         if not video_id:
             continue
 
-        upload_date = data.get("upload_date")
-        fecha = upload_date if upload_date and upload_date != "NA" else None
-        duration_raw = data.get("duration")
-        duracion = float(duration_raw) if duration_raw is not None else 0.0
+        fecha = _normalizar_fecha(data)
+        duracion = _normalizar_duracion(data.get("duration"))
 
         videos.append(
             VideoMeta(
@@ -89,7 +125,5 @@ def obtener_info_playlist(url: str) -> tuple[PlaylistInfo, list[VideoMeta]]:
     nombre = sanitizar_nombre_directorio(nombre)
     logger.info(f"Playlist '{nombre}': {len(videos)} videos encontrados")
 
-    # Hasta slim-down de PlaylistInfo: nombre es la fuente de verdad;
-    # url se conserva por compatibilidad; videos vacío (viven en VideoMeta).
-    playlist = PlaylistInfo(nombre=nombre, url=url, videos=[])
+    playlist = PlaylistInfo(nombre=nombre)
     return playlist, videos

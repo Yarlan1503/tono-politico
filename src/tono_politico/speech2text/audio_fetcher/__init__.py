@@ -2,12 +2,12 @@
 
 API pública:
     AudioFetcherService — discover / fetch_one
-    VideoMeta, AudioVideo, DownloadResult, PlaylistInfo, VideoInfo — DTOs
+    VideoMeta, AudioVideo, DownloadResult, PlaylistInfo — DTOs
 """
 
 from __future__ import annotations
 
-from .models import AudioVideo, DownloadResult, PlaylistInfo, VideoInfo, VideoMeta
+from .models import AudioVideo, DownloadResult, PlaylistInfo, VideoMeta
 from .service import AudioFetcherService
 
 __all__ = [
@@ -15,6 +15,5 @@ __all__ = [
     "AudioVideo",
     "DownloadResult",
     "PlaylistInfo",
-    "VideoInfo",
     "VideoMeta",
 ]

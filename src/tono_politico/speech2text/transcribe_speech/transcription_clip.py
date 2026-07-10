@@ -1,4 +1,4 @@
-"""Adaptador Whisper que transcribe clips temporales generados con ffmpeg."""
+"""Edición temporal con ffmpeg y transcripción Whisper de un clip."""
 
 from __future__ import annotations
 
@@ -9,18 +9,14 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any, cast
 
-from .transcripcion_actor import ClipTranscriptSegment
+from .models import ClipTranscriptSegment
 
 ModelLoader = Callable[[str], Any]
 Runner = Callable[..., subprocess.CompletedProcess[str]]
 
 
 class WhisperFfmpegClipTranscriber:
-    """Transcribe un rango de audio usando ffmpeg + archivo WAV temporal.
-
-    El archivo temporal se normaliza a PCM WAV mono 16 kHz, el mismo formato
-    base que Whisper usa internamente al decodificar archivos.
-    """
+    """Normaliza un rango a WAV mono 16 kHz y lo transcribe con Whisper."""
 
     def __init__(
         self,
@@ -45,13 +41,10 @@ class WhisperFfmpegClipTranscriber:
         modelo: str,
         idioma: str,
     ) -> list[ClipTranscriptSegment]:
-        """Recorta ``audio_path`` a un WAV temporal y lo transcribe con Whisper."""
-        ruta_audio = Path(audio_path)
-        _validar_clip(ruta_audio, t_start, t_end)
-
+        _validar_clip(Path(audio_path), t_start, t_end)
         temp_path = self._crear_temp_wav()
         try:
-            self._recortar_con_ffmpeg(ruta_audio, temp_path, t_start, t_end)
+            self._recortar_con_ffmpeg(Path(audio_path), temp_path, t_start, t_end)
             resultado = self._modelo(modelo).transcribe(
                 str(temp_path),
                 language=idioma,
@@ -84,7 +77,6 @@ class WhisperFfmpegClipTranscriber:
         t_start: float,
         t_end: float,
     ) -> None:
-        duration = t_end - t_start
         cmd = [
             self.ffmpeg_bin,
             "-nostdin",
@@ -96,7 +88,7 @@ class WhisperFfmpegClipTranscriber:
             "-i",
             str(audio_path),
             "-t",
-            str(duration),
+            str(t_end - t_start),
             "-vn",
             "-ac",
             "1",
@@ -108,6 +100,8 @@ class WhisperFfmpegClipTranscriber:
         ]
         try:
             self._runner(cmd, check=True, capture_output=True, text=True)
+        except FileNotFoundError as exc:
+            raise RuntimeError("ffmpeg no está instalado o no está en PATH") from exc
         except subprocess.CalledProcessError as exc:
             stderr = exc.stderr or str(exc)
             raise RuntimeError(f"ffmpeg falló al recortar clip: {stderr}") from exc
@@ -122,14 +116,13 @@ def _load_whisper_model(modelo: str) -> Any:
 def _validar_clip(audio_path: Path, t_start: float, t_end: float) -> None:
     if not audio_path.exists():
         raise FileNotFoundError(f"Audio no encontrado: {audio_path}")
-    if t_end <= t_start:
-        raise ValueError("t_end debe ser mayor que t_start")
+    if t_start < 0 or t_end <= t_start:
+        raise ValueError("t_end debe ser mayor que t_start y t_start no puede ser negativo")
 
 
 def _normalizar_segmentos(resultado: Any) -> list[ClipTranscriptSegment]:
     if not isinstance(resultado, dict):
         return []
-
     data = cast(dict[str, Any], resultado)
     raw_segments = data.get("segments", [])
     if not isinstance(raw_segments, list):
@@ -143,11 +136,9 @@ def _normalizar_segmentos(resultado: Any) -> list[ClipTranscriptSegment]:
         text = str(segment.get("text") or "").strip()
         if not text:
             continue
-        segments.append(
-            ClipTranscriptSegment(
-                text=text,
-                t_start=float(segment.get("start", 0.0)),
-                t_end=float(segment.get("end", 0.0)),
-            )
-        )
+        t_start = float(segment.get("start", 0.0))
+        t_end = float(segment.get("end", 0.0))
+        if t_end <= t_start:
+            continue
+        segments.append(ClipTranscriptSegment(text=text, t_start=t_start, t_end=t_end))
     return segments

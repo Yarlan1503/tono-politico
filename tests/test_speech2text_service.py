@@ -60,9 +60,19 @@ def _tx(video_id: str = "v1") -> ActorTranscript:
 
 
 class TestSpeechToTextService:
+    def test_no_expone_wrappers_no_canonicos(self) -> None:
+        svc = SpeechToTextService(
+            audio_fetcher=MagicMock(),
+            speaker_timestamps=MagicMock(),
+            transcribe_speech=MagicMock(),
+        )
+
+        assert not hasattr(svc, "procesar")
+        assert not hasattr(svc, "fetch_one")
+
     def test_discover_delega(self, tmp_path: Path) -> None:
         fetcher = MagicMock()
-        playlist = PlaylistInfo(nombre="P", url="u", videos=[])
+        playlist = PlaylistInfo(nombre="P")
         metas = [_meta("a")]
         fetcher.discover.return_value = (playlist, metas)
         svc = SpeechToTextService(

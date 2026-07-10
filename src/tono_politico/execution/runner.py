@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -20,14 +20,16 @@ from tono_politico.discursive_approach.topics_cluster.serializacion import (
     cargar_resultado_temas,
     guardar_resultado_temas,
 )
-from tono_politico.speech2text.actor_transcript import (
-    cargar_actor_transcript,
-    guardar_actor_transcript,
-)
-from tono_politico.speech2text.audio_fetcher.cache import ruta_audio
+from tono_politico.speech2text.audio_fetcher.audio import ruta_audio
+from tono_politico.speech2text.audio_fetcher.models import VideoMeta
 from tono_politico.speech2text.models import ActorTranscript
 
-from .artifacts import cargar_argumentos, guardar_argumentos
+from .artifacts import (
+    cargar_actor_transcript,
+    cargar_argumentos,
+    guardar_actor_transcript,
+    guardar_argumentos,
+)
 from .models import (
     ArtifactKey,
     ExecutionPlan,
@@ -36,7 +38,9 @@ from .models import (
     StageName,
     StageResult,
     StageSpec,
+    UnitResult,
 )
+from .observability import build_quality_report, guardar_quality_report
 
 
 @dataclass(frozen=True)
@@ -133,12 +137,18 @@ class ExecutionRunner:
 
         manifest_path = None
         if plan.config.output.persist_manifest:
-            manifest_path = self._persist_manifest(plan, results, exit_code)
+            manifest_path = self._persist_manifest(
+                plan,
+                results,
+                exit_code,
+                context.get("unit_results", []),
+            )
         return ExecutionResult(
             exit_code=exit_code,
             plan=plan,
             stage_results=results,
             manifest_path=manifest_path,
+            unit_results=list(context.get("unit_results", [])),
         )
 
     def _run_stage(
@@ -148,7 +158,10 @@ class ExecutionRunner:
         context: dict[str, Any],
     ) -> None:
         if stage == "speech2text":
-            transcripts = self._run_speech2text(plan)
+            transcripts, unit_results = self._run_speech2text(plan)
+            context["unit_results"] = unit_results
+            if any(unit.status == "failed" for unit in unit_results):
+                raise RuntimeError("speech2text terminó con unidades fallidas")
             context["actor_transcripts"] = transcripts
             return
         if stage == "argument_shape":
@@ -168,55 +181,118 @@ class ExecutionRunner:
         guardar_resultado_enfoques(enfoques, plan.artifacts.enfoques_path)
         context["enfoques"] = enfoques
 
-    def _run_speech2text(self, plan: ExecutionPlan) -> list[ActorTranscript]:
+    def _run_speech2text(
+        self,
+        plan: ExecutionPlan,
+    ) -> tuple[list[ActorTranscript], list[UnitResult]]:
         if plan.config.input.playlist_url is None:
             raise RuntimeError("input.playlist_url requerido para speech2text")
         service = self.factories.build_speech2text(plan.config)
-        if all(hasattr(service, attr) for attr in ("discover", "ensure_perfil", "procesar_one")):
-            return self._run_speech2text_granular(plan, service)
-
-        transcripts = list(service.procesar(plan.config.input.playlist_url))
-        for transcript in transcripts:
-            self._persist_actor_transcript(plan, transcript)
-        return transcripts
+        required = ("discover", "ensure_perfil", "procesar_one")
+        if not all(hasattr(service, attr) for attr in required):
+            raise RuntimeError(
+                "SpeechToTextService requiere la API granular: "
+                "discover, ensure_perfil y procesar_one"
+            )
+        return self._run_speech2text_granular(plan, service)
 
     def _run_speech2text_granular(
         self,
         plan: ExecutionPlan,
         service: Any,
-    ) -> list[ActorTranscript]:
+    ) -> tuple[list[ActorTranscript], list[UnitResult]]:
         playlist, metas = service.discover(plan.config.input.playlist_url)
         metas_seleccionadas = self._filter_video_metas(plan.config, list(metas))
         transcripts: list[ActorTranscript] = []
+        unit_results: list[UnitResult] = []
         ref_video_id = plan.config.speech2text.speaker_timestamps.referencia_voz.video_id
 
         try:
             if not metas_seleccionadas:
-                return []
+                return transcripts, unit_results
+
             if not service.ensure_perfil(playlist.nombre, list(metas)):
-                return []
+                unit_results = [
+                    UnitResult(
+                        video_id=meta.video_id,
+                        status="failed",
+                        reason_code="reference_profile_missing",
+                    )
+                    for meta in metas_seleccionadas
+                ]
+                raise RuntimeError("reference_profile_missing: no se pudo construir el perfil")
 
             for meta in metas_seleccionadas:
+                if plan.config.run.resume and self._already_has_transcript(plan, meta.video_id):
+                    existing = cargar_actor_transcript(
+                        plan.artifacts.actor_transcripts_dir / f"{meta.video_id}.json"
+                    )
+                    transcripts.append(existing)
+                    unit_results.append(
+                        UnitResult(
+                            video_id=meta.video_id,
+                            status="ok",
+                            reason_code="resumed_from_cache",
+                            transcript=existing,
+                            timings={"total": 0.0},
+                        )
+                    )
+                    self._persist_manifest_checkpoint(plan, unit_results)
+                    continue
+
+                started = time.perf_counter()
                 try:
                     transcript = service.procesar_one(meta, playlist.nombre)
-                    if transcript is not None:
+                    reason_code = getattr(service, "last_reason_code", None)
+                    elapsed = time.perf_counter() - started
+                    if transcript is None:
+                        unit_results.append(
+                            UnitResult(
+                                video_id=meta.video_id,
+                                status="skipped",
+                                reason_code=reason_code or "asr_empty",
+                                timings={"total": elapsed},
+                            )
+                        )
+                    else:
                         self._persist_actor_transcript(plan, transcript)
                         transcripts.append(transcript)
+                        unit_results.append(
+                            UnitResult(
+                                video_id=meta.video_id,
+                                status="ok",
+                                reason_code="transcript_persisted",
+                                transcript=transcript,
+                                timings={"total": elapsed},
+                            )
+                        )
+                except Exception as exc:
+                    unit_results.append(
+                        UnitResult(
+                            video_id=meta.video_id,
+                            status="failed",
+                            reason_code=_reason_code_for_exception(exc),
+                            timings={"total": time.perf_counter() - started},
+                            error=str(exc),
+                        )
+                    )
+                    if plan.config.run.fail_fast:
+                        raise
                 finally:
                     self._cleanup_audio(plan, playlist.nombre, meta.video_id)
+                    self._persist_manifest_checkpoint(plan, unit_results)
         finally:
             self._cleanup_audio(plan, playlist.nombre, ref_video_id)
+            self._persist_speech2text_quality(plan, unit_results)
 
-        return transcripts
+        return transcripts, unit_results
 
     def _filter_video_metas(self, cfg: RunConfig, metas: list[Any]) -> list[Any]:
-        selected = metas
-        if cfg.run.only_video_ids:
-            allowed = set(cfg.run.only_video_ids)
-            selected = [meta for meta in selected if meta.video_id in allowed]
-        if cfg.run.max_videos is not None:
-            selected = selected[: cfg.run.max_videos]
-        return selected
+        return select_video_metas(
+            metas,
+            only_video_ids=cfg.run.only_video_ids,
+            max_videos=cfg.run.max_videos,
+        )
 
     def _persist_actor_transcript(self, plan: ExecutionPlan, transcript: ActorTranscript) -> None:
         plan.artifacts.actor_transcripts_dir.mkdir(parents=True, exist_ok=True)
@@ -224,6 +300,42 @@ class ExecutionRunner:
             transcript,
             plan.artifacts.actor_transcripts_dir / f"{transcript.video_id}.json",
         )
+
+    def _persist_speech2text_quality(
+        self,
+        plan: ExecutionPlan,
+        unit_results: list[UnitResult],
+    ) -> None:
+        guardar_quality_report(
+            build_quality_report(unit_results),
+            plan.artifacts.speech2text_quality_path,
+        )
+
+    def _persist_manifest_checkpoint(
+        self,
+        plan: ExecutionPlan,
+        unit_results: list[UnitResult],
+    ) -> None:
+        """Escribe checkpoint incremental con las unidades procesadas hasta ahora."""
+        checkpoint_path = plan.artifacts.run_dir / "speech2text" / "checkpoint.json"
+        checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+        data = {
+            "schema_version": "speech2text_checkpoint.v1",
+            "units": [_unit_result_to_manifest(unit) for unit in unit_results],
+        }
+        checkpoint_path.write_text(
+            json.dumps(data, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+
+    def _already_has_transcript(self, plan: ExecutionPlan, video_id: str) -> bool:
+        """Comprueba si un vídeo ya tiene transcript persistido válido."""
+        path = plan.artifacts.actor_transcripts_dir / f"{video_id}.json"
+        if not path.exists() or not path.is_file():
+            return False
+        from .artifacts import _valid_actor_transcript_file
+
+        return _valid_actor_transcript_file(path)
 
     def _cleanup_audio(self, plan: ExecutionPlan, playlist_name: str, video_id: str) -> None:
         if self.keep_cache or plan.config.run.keep_cache:
@@ -310,9 +422,19 @@ class ExecutionRunner:
         context: dict[str, Any],
     ) -> None:
         if stage.name == "speech2text":
-            context["actor_transcripts"] = self._load_actor_transcripts(
-                plan.artifacts.actor_transcripts_dir
-            )
+            transcripts = self._load_actor_transcripts(plan.artifacts.actor_transcripts_dir)
+            context["actor_transcripts"] = transcripts
+            context["unit_results"] = [
+                UnitResult(
+                    video_id=transcript.video_id,
+                    status="ok",
+                    reason_code="resumed_from_artifact",
+                    transcript=transcript,
+                )
+                for transcript in transcripts
+            ]
+            if not plan.artifacts.speech2text_quality_path.exists():
+                self._persist_speech2text_quality(plan, context["unit_results"])
         elif stage.name == "argument_shape":
             context["argumentos"] = cargar_argumentos(plan.artifacts.argumentos_path)
         elif stage.name == "topics_cluster":
@@ -359,6 +481,7 @@ class ExecutionRunner:
         plan: ExecutionPlan,
         results: list[StageResult],
         exit_code: int,
+        unit_results: list[UnitResult],
     ) -> Path:
         plan.artifacts.manifest_path.parent.mkdir(parents=True, exist_ok=True)
         data = {
@@ -366,7 +489,9 @@ class ExecutionRunner:
             "run_id": plan.run_id,
             "status": "ok" if exit_code == 0 else "failed",
             "stages": [_jsonable(asdict(result)) for result in results],
+            "units": [_unit_result_to_manifest(result) for result in unit_results],
             "artifacts": _jsonable(asdict(plan.artifacts)),
+            "config_fingerprint": _config_fingerprint(plan.config),
         }
         plan.artifacts.manifest_path.write_text(
             json.dumps(data, indent=2, ensure_ascii=False),
@@ -383,3 +508,58 @@ def _jsonable(value: Any) -> Any:
     if isinstance(value, list):
         return [_jsonable(item) for item in value]
     return value
+
+
+def _unit_result_to_manifest(result: UnitResult) -> dict[str, Any]:
+    """Serializa sólo procedencia de ejecución, nunca contenido textual."""
+    return {
+        "video_id": result.video_id,
+        "status": result.status,
+        "reason_code": result.reason_code,
+        "timings": _jsonable(result.timings),
+        "error": result.error,
+    }
+
+
+def select_video_metas(
+    metas: Sequence[VideoMeta],
+    *,
+    only_video_ids: Sequence[str] | None = None,
+    max_videos: int | None = None,
+) -> list[VideoMeta]:
+    """Selecciona vídeos preservando el orden descubierto por la playlist."""
+    if max_videos is not None and max_videos < 0:
+        raise ValueError("max_videos no puede ser negativo")
+
+    selected = list(metas)
+    if only_video_ids:
+        allowed = set(only_video_ids)
+        selected = [meta for meta in selected if meta.video_id in allowed]
+    if max_videos is not None:
+        selected = selected[:max_videos]
+    return selected
+
+
+def _reason_code_for_exception(exc: Exception) -> str:
+    if isinstance(exc, FileNotFoundError):
+        return "audio_invalid"
+    if isinstance(exc, TimeoutError):
+        return "download_failed"
+    return "transcript_invalid"
+
+
+def _config_fingerprint(cfg: RunConfig) -> dict[str, Any]:
+    """Registra parámetros operativos que afectan reproducibilidad."""
+    speaker = cfg.speech2text.speaker_timestamps
+    return {
+        "speech2text_quality_schema": "speech2text_quality.v2",
+        "actor_transcript_schema": "actor_transcript.v1",
+        "whisper_model": cfg.speech2text.transcribe_speech.whisper_model,
+        "whisper_idioma": cfg.speech2text.transcribe_speech.idioma,
+        "pipeline": speaker.pipeline,
+        "umbral_match": speaker.umbral_match,
+        "umbral_ambiguo": speaker.umbral_ambiguo,
+        "actor_objetivo": speaker.actor_objetivo,
+        "only_video_ids": list(cfg.run.only_video_ids) if cfg.run.only_video_ids else [],
+        "max_videos": cfg.run.max_videos,
+    }

@@ -48,7 +48,7 @@ discursive_approach
 | Filtrado | Posterior: elegir tema y/o enfoque para el informe |
 | Salida | Posterior: JSON/Markdown del informe |
 
-**Legacy:** `segmentacion/` + `temas/` + filtrado→tono del runner clásico siguen en el repo y en `discover`/`analyze` sin `--discursive`.
+**Estado temporal:** las dependencias legacy `segmentacion/`, `temas/`, `filtrado/` y `tono/` fueron retiradas. La ruta `discursive_approach` queda bloqueada hasta reconstruir sus contratos propios.
 
 ---
 
@@ -255,7 +255,5 @@ uv run pytest \
 
 | Legacy | Path nuevo |
 |---|---|
-| `segmentacion/` | `argument_shape` (misma idea; DTOs `Argumento`, entrada `ActorTranscript`) |
-| `temas/` | `topics_cluster` (misma idea BERTopic; DTOs sobre `Argumento`) |
-| `filtrado` → `tono` | `topics_approach` aplica Tono **por tema** y agrupa en enfoques; filtrado queda post |
+| `segmentacion/` + `temas/` + `filtrado/` + `tono/` | Dependencias retiradas; contratos propios pendientes |
 | `salida` | sin cambio de contrato aún (espera `ResultadoTono`; adaptar a enfoques es R6) |

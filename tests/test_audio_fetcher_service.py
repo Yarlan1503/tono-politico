@@ -6,7 +6,7 @@ import subprocess
 from pathlib import Path
 from unittest.mock import patch
 
-from tono_politico.speech2text.audio_fetcher.models import PlaylistInfo, VideoMeta
+from tono_politico.speech2text.audio_fetcher.models import DownloadResult, PlaylistInfo, VideoMeta
 from tono_politico.speech2text.audio_fetcher.service import AudioFetcherService
 
 
@@ -23,7 +23,7 @@ def _meta(video_id: str = "vid001") -> VideoMeta:
 class TestAudioFetcherService:
     def test_discover_delega(self, tmp_path: Path) -> None:
         svc = AudioFetcherService(data_dir=tmp_path)
-        playlist = PlaylistInfo(nombre="P", url="u", videos=[])
+        playlist = PlaylistInfo(nombre="P")
         metas = [_meta()]
         with patch(
             "tono_politico.speech2text.audio_fetcher.service.obtener_info_playlist",
@@ -45,6 +45,51 @@ class TestAudioFetcherService:
         assert audio is not None
         assert audio.audio_path == wav
         assert audio.video_id == "cached"
+
+    def test_fetch_one_ignora_cache_que_es_directorio(self, tmp_path: Path) -> None:
+        svc = AudioFetcherService(data_dir=tmp_path)
+        meta = _meta("directory-cache")
+        invalid_cache = tmp_path / "P" / "videos-P" / "directory-cache.wav"
+        invalid_cache.mkdir(parents=True)
+        downloaded = tmp_path / "downloaded.wav"
+        downloaded.write_bytes(b"audio")
+
+        with patch(
+            "tono_politico.speech2text.audio_fetcher.service.descargar_audio_result",
+            return_value=DownloadResult(
+                video_id=meta.video_id,
+                path=downloaded,
+                ok=True,
+            ),
+        ) as download:
+            audio = svc.fetch_one(meta, "P")
+
+        download.assert_called_once()
+        assert audio is not None
+        assert audio.audio_path == downloaded
+
+    def test_fetch_one_ignora_cache_vacio(self, tmp_path: Path) -> None:
+        svc = AudioFetcherService(data_dir=tmp_path)
+        meta = _meta("empty-cache")
+        invalid_cache = tmp_path / "P" / "videos-P" / "empty-cache.wav"
+        invalid_cache.parent.mkdir(parents=True)
+        invalid_cache.touch()
+        downloaded = tmp_path / "downloaded.wav"
+        downloaded.write_bytes(b"audio")
+
+        with patch(
+            "tono_politico.speech2text.audio_fetcher.service.descargar_audio_result",
+            return_value=DownloadResult(
+                video_id=meta.video_id,
+                path=downloaded,
+                ok=True,
+            ),
+        ) as download:
+            audio = svc.fetch_one(meta, "P")
+
+        download.assert_called_once()
+        assert audio is not None
+        assert audio.audio_path == downloaded
 
     def test_fetch_one_descarga(self, tmp_path: Path) -> None:
         svc = AudioFetcherService(data_dir=tmp_path)
@@ -74,31 +119,7 @@ class TestAudioFetcherService:
         ):
             assert svc.fetch_one(_meta("x"), "P") is None
 
-    def test_procesar_wrapper(self, tmp_path: Path) -> None:
+    def test_no_expone_wrapper_procesar(self, tmp_path: Path) -> None:
         svc = AudioFetcherService(data_dir=tmp_path)
-        playlist = PlaylistInfo(nombre="P", url="u", videos=[])
-        metas = [_meta("a"), _meta("b")]
-        wav_a = tmp_path / "P" / "videos-P" / "a.wav"
-        wav_a.parent.mkdir(parents=True)
-        wav_a.write_bytes(b"a")
 
-        def fake_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
-            destino = Path(cmd[cmd.index("-o") + 1])
-            destino.parent.mkdir(parents=True, exist_ok=True)
-            destino.write_bytes(b"b")
-            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
-
-        with (
-            patch(
-                "tono_politico.speech2text.audio_fetcher.service.obtener_info_playlist",
-                return_value=(playlist, metas),
-            ),
-            patch(
-                "tono_politico.speech2text.audio_fetcher.audio.subprocess.run",
-                side_effect=fake_run,
-            ),
-        ):
-            audios = svc.procesar("https://playlist")
-
-        assert len(audios) == 2
-        assert {a.video_id for a in audios} == {"a", "b"}
+        assert not hasattr(svc, "procesar")

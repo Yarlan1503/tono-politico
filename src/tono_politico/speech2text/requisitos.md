@@ -1,617 +1,268 @@
-# AudioFetcher — Requisitos
+# Requisitos de `speech2text`
 
-## Contexto
+> **Ruta:** `src/tono_politico/speech2text/` · **Estado:** implementado y auditado (2026-07-10).
+>
+> Documentación: [`module-speech2text.md`](../../../docs/module-speech2text.md) · [`audio_fetcher`](../../../docs/component_audio_fetcher.md) · [`speaker_timestamps`](../../../docs/component_speaker_timestamps.md) · [`transcribe_speech`](../../../docs/component_transcribe_speech.md)
 
-El Componente 1 actual (Ingesta) hace dos cosas en un solo service:
+## 1. Objetivo y frontera
 
-1. **Descarga de audio + metadata** — playlist info con yt-dlp, descarga de `.wav`, cache de dos niveles (audios + transcripciones).
-2. **Transcripción completa con Whisper** — `word_timestamps=True`, `fp16=False`, produce `VideoTranscript` con `SegmentoRaw[]` (texto + timestamps + words + pausa_antes + probability por palabra).
-
-El problema: la arquitectura actor-first del pipeline demuestra que **la transcripción del video completo es desperdicio**. El pipeline diariza con pyannote, identifica al actor, filtra `SegmentoRaw[]` por midpoint contra turnos del actor, y todo lo demás se descarta. La transcripción por clips (`transcribir_turnos_actor` + `WhisperFfmpegClipTranscriber`) ya existe en el módulo de diarización y transcribe **solo los turnos del actor**, que es lo único que importa.
-
-### Qué se desperdicia hoy
-
-- **Compute de Whisper sobre audio completo** cuando solo se necesita el ~30-50% que es del actor.
-- **JSON inflado**: `VideoTranscript.raw_segments` incluye `words: list[WordTimestamp]` con probability por palabra para TODOS los segmentos, incluyendo los de otros speakers que se descartan en Diarización.
-- **Acoplamiento innecesario**: Ingesta necesita saber de Whisper (`import whisper`, `load_model`, `fp16`, `word_timestamps`) cuando su rol natural es solo traer el audio.
-
-### Decisión de diseño (ya acordada en sesiones previas)
-
-> *"Turn-level is ideal, because only the target actor's participations matter; diarize/identify actor first, transcribe only actor turns."*
-
-AudioFetcher remplaza a Ingesta asumiendo **solo la descarga de audio y metadata**. La transcripción se mueve al componente de Diarización/Actor (donde ya existe `transcribir_turnos_actor`).
-
-## Objetivo
-
-Separar la responsabilidad de **obtención de audio** de la de **transcripción**, eliminando la transcripción full-video de Ingesta y el JSON inflado de `VideoTranscript`.
-
-## Frontera del componente
-
-### AudioFetcher hace
-
-- [ ] Obtener metadata de la playlist (nombre, videos) vía `yt-dlp --flat-playlist`
-- [ ] Descargar audio de cada video como `.wav` vía `yt-dlp -x --audio-format wav`
-- [ ] Cachear audios `.wav` con validación (`--download-archive`, `--retries 10`)
-- [ ] Devolver metadata + rutas de audio como `list[AudioVideo]`
-
-### AudioFetcher NO hace
-
-- [ ] ~~`transcribir()` con Whisper~~ → se elimina; la transcripción pasa a Diarización/Actor (`transcribir_turnos_actor`)
-- [ ] ~~`guardar_transcripcion()` / `cargar_transcripcion()`~~ → se elimina; la transcripción es turn-level, no full-video
-- [ ] ~~`verificar_cache_transcripciones()`~~ → se elimina
-- [ ] ~~`VideoTranscript.raw_segments` con `WordTimestamp[]`~~ → se reemplaza por `ActorTranscript` turn-level
-
-### Cambio en el contrato del pipeline
+`speech2text` convierte una playlist en transcripciones **actor-only** y **turn-level**.
 
 ```text
-ANTES (batch por fase):
-  Ingesta(playlist) → [VideoTranscript×N]
-  Diarizacion([VT×N]) → [VT filtrado×N]
-  Segmentacion([VT×N]) → [Segmento…]
-  Temas([Segmento…]) → ResultadoTemas
-
-AHORA (Fase 1 = loop video-por-video + temas al final):
-  discover(playlist) → PlaylistInfo + [VideoMeta×N]
-  para cada video:
-      fetch_one(VideoMeta) → AudioVideo | omitir
-      diarizar_one(AudioVideo) → ActorTranscript | omitir
-      segmentar_one(ActorTranscript) → list[Segmento]
-      (opcional) borrar .wav si no --keep-cache
-  Temas(todos los Segmento) → ResultadoTemas   # fuera del loop
+playlist → discover → audio WAV → diarización/match → clips Whisper → ActorTranscript[]
 ```
 
-### Orquestación Fase 1 (decisión)
+- [x] Descubre metadata sin descargar audio.
+- [x] Descarga/reutiliza `.wav` con validación de archivo regular.
+- [x] Construye perfil de voz y selecciona turnos del actor.
+- [x] Ejecuta ASR solo sobre clips del actor.
+- [x] Persiste `ActorTranscript`; la observabilidad y el manifest pertenecen a `execution/`.
+- [x] No hace segmentación semántica, temas, tono ni filtrado temático.
+- [x] No usa Whisper full-video ni persiste word-level timestamps/probabilities.
+- [x] Conserva segmentos cortos; no aplica filtros sin datos etiquetados.
 
-La **Fase 1** agrupa la lógica de **descarga → diarización → segmentación** y se ejecuta **video por video**, no en tres batches globales.
-
-| Subpaso | Dueño | Unidad | Salida |
-|---|---|---|---|
-| 1. Mapear playlist | `AudioFetcher` (`playlist.py`) | playlist | `PlaylistInfo` + `list[VideoMeta]` |
-| 2. Descargar audio | `AudioFetcher` (`audio.py` / `fetch_one`) | 1 video | `AudioVideo` o skip |
-| 3. Diarizar + ASR actor | `DiarizacionService` | 1 video | `ActorTranscript` o skip |
-| 4. Segmentar | `SegmentacionService` | 1 video | `list[Segmento]` |
-| 5. Descubrir temas | `TemasService` | **todos** los segmentos | `ResultadoTemas` |
-
-**Por qué el loop para en segmentación y no en temas:**
-
-- Descarga, diarización y segmentación son **por video** (audio local, speakers locales, oraciones locales).
-- Temas (BERTopic) necesita el **corpus completo** de segmentos de la playlist para clusterizar; no tiene sentido correrlo N veces dentro del loop.
-
-**Quién orquesta el loop:** `PipelineRunner` (Fase 1), **no** `AudioFetcherService`.
-AudioFetcher se queda delgado: `discover` + `fetch_one`. Diarización y Segmentación exponen procesamiento **por unidad**.
-
-**Cache delgado en el loop:**
+## 2. Flujo y ownership
 
 ```text
-data/<playlist>/videos-<playlist>/<video_id>.wav   # temporal por video
-# tras diarizar+segmentar con éxito, borrar .wav salvo --keep-cache
-# durable opcional: ActorTranscript / segmentos en output/runs/<run_id>/
+ExecutionRunner
+  ├─ SpeechToTextService.discover(url) → PlaylistInfo + VideoMeta[]
+  ├─ SpeechToTextService.ensure_perfil(nombre, metas)
+  │    └─ video_ref_id → AudioVideo → pyannote → PerfilVozActor
+  └─ por cada VideoMeta seleccionado
+       ├─ si resume + transcript válido → saltar (resumed_from_cache)
+       ├─ AudioFetcherService.fetch_one() → AudioVideo | None
+       ├─ SpeakerTimestampsService.procesar_one() → TurnoOrador[]
+       ├─ TranscribeSpeechService.procesar_one() → ActorTranscript | None
+       ├─ UnitResult(status, reason_code, timings)
+       └─ checkpoint incremental → speech2text/checkpoint.json
+  └─ observability.py → speech2text/quality.json (v2)
 ```
 
-Beneficios: pico de disco ≈ 1 WAV; fallos aislados por `video_id`; manifest por video natural; alineado con actor-first.
+- [x] El loop por video pertenece al runner.
+- [x] El perfil se resuelve con la metadata completa antes de `max_videos`.
+- [x] La pérdida del perfil marca el stage como `failed`, no `ok` vacío.
+- [x] Los fallos por vídeo generan `UnitResult(status="failed")` con `reason_code`.
+- [x] Resume a nivel de unidad: vídeos con transcript válido se saltan.
 
-## Contrato de entrada/salida
+## 3. Contratos DTO
 
-### API de `AudioFetcherService` (orientada al loop)
+### `PlaylistInfo`
 
-```python
-AudioFetcherService(data_dir=Path("data"))
+- [x] Solo contiene `nombre: str`.
+- [x] No contiene `url` ni `videos`; la lista vive en `list[VideoMeta]`.
 
-# Mapa de la playlist (sin descargar audio)
-discover(url_playlist: str) -> tuple[PlaylistInfo, list[VideoMeta]]
+### `VideoMeta` — pre-descarga
 
-# Una unidad del loop Fase 1
-fetch_one(
-    video: VideoMeta,
-    nombre_playlist: str,
-    *,
-    archive_path: Path | None = None,
-) -> AudioVideo | None
-# None si la descarga falla (el runner marca skip y sigue)
-
-# Wrapper opcional de conveniencia (tests / uso ad-hoc):
-# procesar(url) = discover + fetch_one para cada meta → list[AudioVideo]
-# No es el camino del PipelineRunner en producción.
-```
-
-### Salida — `AudioVideo` (nuevo DTO)
-
-| Campo | Tipo | Descripción |
-|---|---|---|
-| `video_id` | `str` | ID del video de YouTube |
-| `url` | `str` | URL del video |
-| `titulo` | `str` | Título del video |
-| `fecha` | `str \| None` | Fecha YYYYMMDD |
-| `audio_path` | `Path` | Ruta al `.wav` descargado y cacheado |
-| `duracion` | `float` | Duración en segundos (metadata de yt-dlp) |
-
-### `PlaylistInfo` y `VideoInfo` (slim-down en `models.py` compartido)
-
-**`PlaylistInfo`** — solo se queda con:
-
-| Campo | Tipo | Descripción |
-|---|---|---|
-| `nombre` | `str` | Nombre sanitizado de la playlist |
-
-(`url` y `videos` se eliminan — la URL ya se pasó al service, y la lista de videos vive en `list[AudioVideo]`.)
-
-**`VideoInfo`** — solo se queda con:
-
-| Campo | Tipo | Descripción |
-|---|---|---|
-| `titulo` | `str` | Título del video |
-| `fecha` | `str \| None` | Fecha YYYYMMDD |
-
-(`id`, `url`, `duracion` migran a `AudioVideo`.)
-
-## Módulos del componente `audio_fetcher`
-
-> Ruta canónica: `src/tono_politico/speech2text/audio_fetcher/`.
-> Requisitos del umbrella: `src/tono_politico/speech2text/requisitos.md`.
-
-```text
-src/tono_politico/speech2text/audio_fetcher/
-├── __init__.py            # API pública del subpaquete
-├── models.py              # DTOs del componente
-├── cache.py               # Rutas del cache de audios
-├── playlist.py            # Metadata de playlist (yt-dlp --flat-playlist)
-├── audio.py               # Cache + descarga de .wav
-└── service.py             # AudioFetcherService
-```
-
-**No existe** `transcripcion.py` aquí (ASR actor-only vive en `speech2text/transcribe_speech/`).
-
-### Por qué un DTO intermedio (`VideoMeta`)
-
-Con el slim-down:
-
-- `PlaylistInfo` solo tiene `nombre`
-- `VideoInfo` solo tiene `titulo` + `fecha`
-- `AudioVideo` es la **salida final** (incluye `audio_path`)
-
-La descarga necesita `video_id` / `url` / `duracion` **antes** de tener `.wav`.
-Eso no cabe en `VideoInfo` slim ni en `AudioVideo` (que ya exige `audio_path`).
-
-Por tanto el componente usa un DTO interno de descubrimiento:
-
-| DTO | Rol |
+| Campo | Tipo |
 |---|---|
-| `VideoMeta` | Metadata pre-descarga (interno del componente) |
-| `AudioVideo` | Metadata + `audio_path` (salida pública de `procesar`) |
-| `DownloadResult` | Resultado estructurado de una descarga |
-| `PlaylistInfo` | Solo `nombre` (compartido, en `tono_politico.models`) |
+| `video_id` | `str` |
+| `url` | `str` |
+| `titulo` | `str` |
+| `fecha` | `str \| None` (`YYYYMMDD`) |
+| `duracion` | `float` |
 
----
+### `AudioVideo` — post-descarga
 
-### 1. `models.py` — DTOs del componente
+- [x] Conserva `VideoMeta` y añade `audio_path: Path` obligatorio.
+- [x] Se construye con `AudioVideo.from_meta(meta, audio_path=...)`.
 
-```python
-@dataclass(frozen=True)
-class VideoMeta:
-    video_id: str
-    url: str
-    titulo: str
-    fecha: str | None
-    duracion: float  # segundos; 0.0 si yt-dlp no la reporta
+### `DownloadResult`
 
-@dataclass(frozen=True)
-class AudioVideo:
-    video_id: str
-    url: str
-    titulo: str
-    fecha: str | None
-    audio_path: Path
-    duracion: float
+`video_id: str`, `path: Path | None`, `ok: bool`, `error: str | None`.
 
-@dataclass(frozen=True)
-class DownloadResult:
-    video_id: str
-    path: Path | None
-    ok: bool
-    error: str | None = None
-```
+- [x] Los fallos de yt-dlp son estructurados y no crashean la unidad.
 
-| DTO | Público | Notas |
-|---|---|---|
-| `AudioVideo` | sí | Contrato de salida del service |
-| `DownloadResult` | sí (tests/debug) | Migrado desde `ingesta/models.py` |
-| `VideoMeta` | interno / tests | Alimenta cache + descarga; no es salida del pipeline |
+### Diarización
 
-Helper opcional (puede vivir en `models.py` o en `service.py`):
+- [x] `TurnoOrador`: `video_id`, `speaker_id`, `t_start`, `t_end`.
+- [x] `PerfilVozActor`: actor, video de referencia, embedding, modelo y duración.
+- [x] `SpeakerMatch`: speaker, distancia, aceptación y ambigüedad.
+- [x] Un match ambiguo se descarta.
 
-```python
-def audio_video_from(meta: VideoMeta, audio_path: Path) -> AudioVideo: ...
-```
+### `ActorTranscript` (`actor_transcript.v1`)
 
----
+`schema_version`, `video_id`, `actor`, `scope="actor_only"`, `AsrMetadata`, `segments` y `fecha`.
 
-### 2. `cache.py` — rutas de cache (solo audios)
+Cada segmento contiene `text`, timestamps absolutos, `speaker`, `source_turn_start`, `source_turn_end` y `word_count`.
 
-Migrado desde `ingesta/cache.py`, **sin** rutas de transcripción.
+- [x] Solo contiene texto atribuido al actor.
+- [x] Conserva los límites del turno pyannote y propaga `fecha`.
+- [x] No contiene words, probabilities, captions ni verbose Whisper.
 
-| Función / constante | Firma | Responsabilidad |
-|---|---|---|
-| `DATA_DIR` | `Path("data")` | Default del cache runtime |
-| `ruta_dir_videos` | `(nombre_playlist, base_dir=None) -> Path` | `data/<playlist>/videos-<playlist>/` |
-| `ruta_audio` | `(nombre_playlist, video_id, base_dir=None) -> Path` | `.../<video_id>.wav` |
+### Estados de ejecución (`UnitResult` en `execution/`)
 
-**Eliminado de este módulo:**
+- [x] `UnitResult`: `video_id`, `status` (`ok`/`skipped`/`failed`), `reason_code`, `timings`, `transcript`, `error`.
+- [x] `UNIT_REASON_CODES`: `transcript_persisted`, `resumed_from_cache`, `skipped`, `audio_fetch_failed`, `transcription_failed`, `diarization_failed`, `no_segments`, `error`, `reference_profile_missing`, `audio_invalid`, `download_failed`, `transcript_invalid`, `asr_empty`.
+- [x] El manifest serializa `UnitResult` sin texto de transcripciones.
 
-- `ruta_dir_transcripciones`
-- `ruta_transcripcion`
-
-Estructura en disco:
+## 4. Estructura de módulos
 
 ```text
-data/
-└── <playlist>/
-    └── videos-<playlist>/
-        └── <video_id>.wav
-```
-
----
-
-### 3. `playlist.py` — metadata de playlist
-
-Migrado desde `ingesta/playlist.py`, adaptado al slim-down.
-
-| Función | Firma | Responsabilidad |
-|---|---|---|
-| `sanitizar_nombre_directorio` | `(nombre: str) -> str` | Nombre seguro para filesystem |
-| `obtener_info_playlist` | `(url: str) -> tuple[PlaylistInfo, list[VideoMeta]]` | yt-dlp `--flat-playlist` + JSON lines |
-
-Comportamiento:
-
-1. Ejecuta `yt-dlp --flat-playlist --extractor-args youtubetab:approximate_date -j`.
-2. Extrae nombre de playlist → `sanitizar_nombre_directorio` → `PlaylistInfo(nombre=...)`.
-3. Por cada video accesible construye `VideoMeta(video_id, url, titulo, fecha, duracion)`.
-4. Omite entradas sin `id` (privados/eliminados ya filtrados por yt-dlp).
-5. Si yt-dlp falla → `RuntimeError`.
-
-**Cambio vs Ingesta:** ya no devuelve `PlaylistInfo(nombre, url, videos=[VideoInfo...])`.
-La URL de playlist no se guarda en el DTO (ya entró al service).
-
----
-
-### 4. `audio.py` — cache y descarga de `.wav`
-
-Migrado desde `ingesta/audio.py`, firmas sobre `VideoMeta` (no `VideoInfo`).
-
-| Función | Firma | Responsabilidad |
-|---|---|---|
-| `verificar_cache_videos` | `(nombre_playlist, videos: list[VideoMeta], base_dir=None) -> dict[str, list[VideoMeta]]` | `{"existentes", "faltantes"}` según existencia del `.wav` |
-| `descargar_audio_result` | `(video: VideoMeta, nombre_playlist, base_dir=None, archive_path=None) -> DownloadResult` | yt-dlp `-x --audio-format wav`, no crashea |
-| `descargar_audio` | misma firma → `Path \| None` | Wrapper legacy opcional; preferir `descargar_audio_result` |
-
-Parámetros yt-dlp a conservar:
-
-- `-x --audio-format wav -f bestaudio/best`
-- `--retries 10`
-- timeout 600s
-- `--download-archive` opcional vía `archive_path`
-
----
-
-### 5. `service.py` — `AudioFetcherService`
-
-Orquestador OOP delgado; **no** diariza ni segmenta.
-
-| Miembro | Firma | Responsabilidad |
-|---|---|---|
-| `__init__` | `(data_dir: Path = Path("data"))` | Solo config de cache; **sin** Whisper |
-| `discover` | `(url_playlist: str) -> tuple[PlaylistInfo, list[VideoMeta]]` | Mapa de la playlist (delega en `playlist.py`) |
-| `fetch_one` | `(video: VideoMeta, nombre_playlist, *, archive_path=None) -> AudioVideo \| None` | Cache hit o descarga de un video; `None` si falla |
-| `procesar` | `(url_playlist: str) -> list[AudioVideo]` | Wrapper opcional: discover + fetch_one×N (tests/ad-hoc) |
-
-Flujo de `fetch_one` (unidad del loop Fase 1):
-
-```text
-1. path = ruta_audio(nombre_playlist, video.video_id, data_dir)
-2. si path existe → AudioVideo(..., audio_path=path)
-3. si no → descargar_audio_result(video, ...)
-4. si ok → AudioVideo(..., audio_path=result.path)
-5. si no → None (runner marca skip)
-```
-
-Flujo de `procesar` (wrapper, no es el camino del runner):
-
-```text
-1. playlist, videos = discover(url)
-2. para cada meta: fetch_one → acumular si no None
-3. devolver list[AudioVideo]
-```
-
-**No hace:** Whisper, diarización, segmentación, JSON de transcripción, loop de Fase 1.
-
----
-
-### 6. `__init__.py` — exports públicos
-
-```python
-from .models import AudioVideo, DownloadResult
-from .service import AudioFetcherService
-
-__all__ = ["AudioFetcherService", "AudioVideo", "DownloadResult"]
-```
-
-`VideoMeta` puede exportarse solo si hace falta en tests; no es contrato del pipeline.
-
----
-
-### Dependencia entre módulos
-
-```text
-service.py
-  ├── playlist.py  → models.VideoMeta, tono_politico.models.PlaylistInfo
-  ├── audio.py     → models.VideoMeta, models.DownloadResult, cache.*
-  ├── cache.py
-  └── models.py    → AudioVideo, VideoMeta, DownloadResult
-```
-
-Helpers puros en `playlist` / `audio` / `cache`; el service solo compone.
-
----
-
-### Qué NO forma parte de `audio_fetcher`
-
-| Archivo / concepto | Destino |
-|---|---|
-| `transcripcion.py` (Whisper full-video) | Eliminado del componente 1 |
-| `guardar/cargar_transcripcion` | Eliminado |
-| `verificar_cache_transcripciones` | Eliminado |
-| `SegmentoRaw` / `WordTimestamp` / `VideoTranscript` | Eliminados de `models.py` compartido (fase posterior del checklist) |
-| Transcripción actor-only | Se queda en `diarizacion/` |
-
-## Checklist de implementación
-
-### DTOs del componente
-
-- [x] Crear `VideoMeta` en `audio_fetcher/models.py` (video_id, url, titulo, fecha, duracion)
-- [x] Crear `AudioVideo` en `audio_fetcher/models.py` (video_id, url, titulo, fecha, audio_path, duracion)
-- [x] Crear `DownloadResult` en `audio_fetcher/models.py` (migración desde ingesta pendiente de cableado)
-- [ ] Slim-down `PlaylistInfo` en `models.py` compartido: solo `nombre`
-- [ ] Slim-down `VideoInfo` en `models.py` compartido: solo `titulo` y `fecha`
-- [ ] Eliminar `SegmentoRaw` de `models.py` compartido
-- [ ] Eliminar `WordTimestamp` de `models.py` compartido
-- [ ] Eliminar `VideoTranscript` de `models.py` compartido
-
-### Umbrella `speech2text/`
-
-- [x] Crear paquete `src/tono_politico/speech2text/`
-- [x] `SpeechToTextService`: `discover` + `procesar_one(VideoMeta) -> ActorTranscript | None`
-- [x] Tres subpaquetes: `audio_fetcher/`, `speaker_timestamps/`, `transcribe_speech/`
-- [x] Exports: `SpeechToTextService`, `AudioVideo`, `ActorTranscript`, …
-- [x] Segmentación y Temas **no** viven en `speech2text`
-
-### Módulos `speech2text/audio_fetcher/`
-
-- [x] `cache.py`: `DATA_DIR`, `ruta_dir_videos`, `ruta_audio` (sin rutas de transcripción)
-- [x] `playlist.py`: `sanitizar_nombre_directorio` + `obtener_info_playlist(url) -> tuple[PlaylistInfo, list[VideoMeta]]`
-- [x] `audio.py`: `verificar_cache_videos`, `descargar_audio_result` (sobre `VideoMeta`)
-- [x] `service.py`: `discover`, `fetch_one` (API principal); `procesar` opcional como wrapper
-- [x] `__init__.py`: exports `AudioFetcherService`, `AudioVideo`, `DownloadResult`, `VideoMeta`
-- [ ] Eliminar `ingesta/transcripcion.py` completo
-- [ ] Eliminar `ingesta/service.py` completo
-- [ ] Eliminar paquete `ingesta/` cuando todo esté migrado
-
-### Módulos `speech2text/speaker_timestamps/`
-
-- [ ] Migrar desde `diarizacion/`: `adapter`, `diarizacion`, `perfil_voz`, `matching`, DTOs de speakers
-- [x] API por unidad: `AudioVideo` → `list[TurnoOrador]` (solo turnos del actor) o DTO equivalente
-- [x] Perfil de voz: construir una vez por corrida; reutilizar en el loop
-- [ ] Eliminar `filtrar_por_actor` y `alineacion.py` (no hay `SegmentoRaw` que filtrar)
-- [x] Resolver audio desde `AudioVideo.audio_path`
-
-### Módulos `speech2text/transcribe_speech/`
-
-- [ ] Migrar: `whisper_clip`, `transcripcion_actor`, `actor_transcript`, DTOs `ActorTranscript*`
-- [x] API por unidad: `(AudioVideo, turnos_actor) → ActorTranscript | None`
-- [x] Whisper `large-v3-turbo`, turn-level, **sin** word-level / probability / `pausa_antes`
-- [ ] Persistencia `actor_transcript.v1` (texto, t_start/t_end, source_turn/speaker, word_count opcional)
-
-### Segmentación — adaptar entrada (por video)
-
-- [ ] API por unidad: entrada `ActorTranscript` → salida `list[Segmento]`
-- [ ] Construir `Oracion` desde `ActorTranscriptSegment.text` (sin `WordTimestamp` / `pausa_antes`)
-- [ ] Eliminar dependencia de `VideoTranscript` / `SegmentoRaw`
-
-### PipelineRunner — Fase 1 video-por-video
-
-- [ ] `discover` playlist → `PlaylistInfo` + `list[VideoMeta]`
-- [ ] Loop por video: `speech2text.procesar_one` (fetch → speakers → ASR) → `segmentar_one`
-- [ ] Acumular `Segmento[]` de todos los videos exitosos
-- [ ] Tras cada video exitoso: borrar `.wav` salvo `--keep-cache`
-- [ ] Tras el loop: `TemasService.procesar(todos_los_segmentos)` → `ResultadoTemas`
-- [ ] Manifest por video: ok/skip/failed + fase en la que falló
-- [ ] Mantener `fase1-topicos.json` + `--resume` sobre el agregado de temas
-
-### main.py / factories / config
-
-- [ ] Renombrar `_build_ingesta` → `_build_speech2text` (compone los 3 subservicios)
-- [ ] Config YAML: `audio_fetcher` + `speaker_timestamps` + `transcribe_speech` (Whisper solo en este último)
-- [ ] Actualizar `config.py` dataclasses
-- [ ] Actualizar `_service_factories()` en `main.py`
-
-### Documentación
-
-- [ ] Actualizar `AGENTS.md`: estructura, estado por componente, arquitectura OOP
-- [ ] Actualizar `README.md`: pipeline, tabla de estado, estructura, uso programático
-- [ ] Actualizar `docs/configuracion.md`: secciones `speech2text` / subpaquetes
-- [ ] Reemplazar `docs/componente-ingesta.md` → docs de `speech2text` / `audio_fetcher`
-- [ ] Reemplazar `docs/componente-diarizacion.md` → `speaker_timestamps` + `transcribe_speech`
-
-## Empaquetado: `speech2text` (esqueleto)
-
-Umbrella **audio → `ActorTranscript` turn-level**. Tres subpaquetes con fronteras claras.
-**No** incluye segmentación ni temas.
-
-```text
-src/tono_politico/speech2text/
-├── __init__.py                      # API pública del umbrella
-├── service.py                       # SpeechToTextService — compone los 3
-├── requisitos.md                    # (mover desde audio_fetcher/requisitos.md)
+speech2text/
+├── __init__.py
+├── service.py                    # orquesta los tres submódulos
+├── models.py                     # DTOs del dominio de speech2text
 │
-├── audio_fetcher/                   # I/O: playlist + descarga .wav
+├── audio_fetcher/
 │   ├── __init__.py
-│   ├── models.py                    # VideoMeta, AudioVideo, DownloadResult
-│   ├── cache.py                     # DATA_DIR, ruta_dir_videos, ruta_audio
-│   ├── playlist.py                  # sanitizar + obtener_info_playlist
-│   ├── audio.py                     # verificar_cache + descargar_audio_result
-│   └── service.py                   # AudioFetcherService (discover, fetch_one)
+│   ├── playlist.py               # playlist_name + metadata de vídeos
+│   ├── audio.py                  # descarga y cache de audio
+│   ├── service.py                # orquesta audio_fetcher
+│   └── models.py                 # DTOs del dominio de audio_fetcher
 │
-├── speaker_timestamps/              # Quién habla cuándo + match del actor
+├── speaker_timestamps/
 │   ├── __init__.py
-│   ├── models.py                    # TurnoOrador, PerfilVozActor, SpeakerMatch
-│   ├── adapter.py                   # load/run pyannote (primary/fallback, device)
-│   ├── diarizacion.py               # exclusive_speaker_diarization → TurnoOrador[]
-│   ├── perfil_voz.py                # construir_perfil_desde_output (speaker dominante)
-│   ├── matching.py                  # distancia_coseno, clasificar, identificar_actor
-│   └── service.py                   # AudioVideo → turnos del actor (sin texto)
+│   ├── perfil_voz.py             # construye el perfil de voz
+│   ├── matching.py               # identifica turnos y valida resultados
+│   └── service.py                # carga modelo y orquesta diarización
 │
-└── transcribe_speech/               # ASR actor-only (Whisper large-v3-turbo)
+└── transcribe_speech/
     ├── __init__.py
-    ├── models.py                    # ActorTranscript, ActorTranscriptSegment, AsrMetadata
-    ├── whisper_clip.py              # WhisperFfmpegClipTranscriber (ffmpeg + Whisper)
-    ├── transcripcion_actor.py       # ClipTranscriber + transcribir_turnos_actor
-    ├── actor_transcript.py          # serialización actor_transcript.v1
-    └── service.py                   # (AudioVideo, turnos_actor) → ActorTranscript
+    ├── actor_clip.py             # padding y mapeo temporal de clips
+    ├── transcription_clip.py     # Whisper sobre clips normalizados
+    ├── service.py                # orquesta transcribe_speech
+    └── models.py                 # DTOs del dominio de transcribe_speech
 ```
 
-### Responsabilidades por subpaquete
+**Fuera del módulo:** `errors.py`, `validation.py`, `cache.py`, `adapter.py`, `output.py`, `quality.py`, `results.py`, `requisitos.md`, `actor_transcript.py`, `whisper_clip.py`, `transcripcion_actor.py`. La persistencia y observabilidad pertenecen a `execution/`.
 
-| Subpaquete | Hace | No hace |
-|---|---|---|
-| `audio_fetcher` | Mapear playlist, descargar/cachear `.wav` | Whisper, pyannote, texto |
-| `speaker_timestamps` | pyannote, perfil de voz, match actor, turnos | Descarga YouTube, ASR, segmentación semántica |
-| `transcribe_speech` | Whisper sobre clips del actor, `ActorTranscript` | Match de actor, yt-dlp, spaCy/BERTopic |
+APIs canónicas:
 
-### Contratos entre los 3
+- [x] `SpeechToTextService.discover`, `ensure_perfil`, `procesar_one`.
+- [x] `AudioFetcherService.discover`, `fetch_one`.
+- [x] `SpeakerTimestampsService.build_perfil`, `set_perfil`, `procesar_one`.
+- [x] `TranscribeSpeechService.procesar_one`.
+- [x] `construir_perfil_desde_output`, `transcribir_turnos_actor`.
+- [x] `WhisperFfmpegClipTranscriber.transcribir_clip`.
+- [x] Serialización: `guardar_actor_transcript`, `cargar_actor_transcript` (en `execution/artifacts.py`).
+- [x] Observabilidad: `build_quality_report`, `guardar_quality_report` (en `execution/observability.py`).
+
+## 5. Reglas por componente
+
+### `audio_fetcher`
+
+- [x] `obtener_info_playlist()` usa yt-dlp `--flat-playlist`.
+- [x] Sanitiza el nombre y usa `data/<playlist>/videos-<playlist>/<video_id>.wav`.
+- [x] Reutiliza cache (valida archivo regular + tamaño > 0) y no importa Whisper/pyannote.
+- [x] `audio.py` captura `FileNotFoundError` (binario ausente) además de `TimeoutExpired`.
+
+### `speaker_timestamps`
+
+- [x] Carga pipeline primary/fallback con device auto en `service.py` (sin `adapter.py`).
+- [x] Usa Community-1 y `exclusive_speaker_diarization`.
+- [x] `service.py` valida cantidad de embeddings vs labels, NaN/Inf, turnos con rangos inválidos.
+- [x] `matching.py` valida dimensiones compatibles y vectores finitos en `distancia_coseno`.
+- [x] `perfil_voz.py` valida consistencia embeddings↔labels y segmentos inválidos.
+- [x] Defaults de matching: `umbral_match=0.5`, `umbral_ambiguo=0.7`.
+
+### `transcribe_speech`
+
+- [x] `actor_clip.py`: recibe turnos del actor, aplica padding acotado y mapea timestamps.
+- [x] `transcription_clip.py`: ffmpeg mono 16 kHz PCM + Whisper con `word_timestamps=False`.
+- [x] Cachea modelos, elimina temporales en `finally` y omite texto vacío.
+- [x] `models.py`: `ClipTranscriptSegment`, `ClipTranscriber` (Protocol), `ClipWindow`.
+- [x] Reubica timestamps al timeline y los limita al turno fuente.
+
+## 6. Calidad y artefactos
+
+Informe `speech2text_quality.v2` en `execution/observability.py`:
 
 ```text
-audio_fetcher:
-  discover(url) → (PlaylistInfo, list[VideoMeta])
-  fetch_one(VideoMeta, nombre_playlist) → AudioVideo | None
-
-speaker_timestamps:
-  procesar_one(AudioVideo) → list[TurnoOrador]  # solo turnos del actor
-  # perfil de voz: lazy, 1× por corrida (video_ref)
-
-transcribe_speech:
-  procesar_one(AudioVideo, turnos_actor) → ActorTranscript | None
-  # Whisper large-v3-turbo, turn-level, sin word-level
+output/<run_id>/speech2text/quality.json
 ```
 
-### Flujo de `SpeechToTextService.procesar_one`
+- [x] DTO separado, sin texto de transcripciones.
+- [x] Métricas desde `UnitResult`: cuenta ok/skipped/failed, segmentos, palabras, vacíos.
+- [x] No filtra segmentos.
+- [ ] Etiquetar una muestra real antes de proponer filtros o métricas de cortesía.
+
+Checkpoint incremental:
 
 ```text
-1. audio  = audio_fetcher.fetch_one(meta, nombre_playlist)
-   └─ None → return None
-2. turnos = speaker_timestamps.procesar_one(audio)
-   └─ vacío / error → return None
-3. actor_tx = transcribe_speech.procesar_one(audio, turnos)
-   └─ return ActorTranscript | None
+output/<run_id>/speech2text/checkpoint.json
 ```
 
-### API del orquestador
+- [x] Se escribe después de cada vídeo procesado.
+- [x] Permite reanudar sin duplicar transcripts.
 
-```python
-SpeechToTextService(...)
-
-discover(url) -> tuple[PlaylistInfo, list[VideoMeta]]
-
-# Unidad del loop (camino principal)
-procesar_one(video: VideoMeta, nombre_playlist: str) -> ActorTranscript | None
-# por dentro: fetch_one → speaker_timestamps → transcribe_speech
-# None = skip (fallo de descarga / sin actor / error ASR)
-
-# Wrapper opcional
-procesar(url) -> list[ActorTranscript]  # tests / ad-hoc; no es el runner de prod
-```
-
-### Relación con Fase 1
+Manifest con fingerprint de configuración:
 
 ```text
-Fase 1 (PipelineRunner):
-  playlist, metas = speech2text.discover(url)
-  for meta in metas:
-      actor_tx = speech2text.procesar_one(meta, playlist.nombre)
-      if actor_tx is None: skip; continue
-      segs = segmentacion.procesar_one(actor_tx)  # FUERA de speech2text
-      # borrar .wav salvo --keep-cache
-  Temas(all segs)                                 # FUERA de speech2text
+output/<run_id>/manifest.json
 ```
 
-### Persistencia (`actor_transcript.v1`)
+- [x] `config_fingerprint`: whisper_model, idioma, pipeline, thresholds, only_video_ids, max_videos.
+- [x] `units`: una entrada por vídeo sin texto.
+- [x] `stages`: estado y duración por etapa.
 
-- **Sí:** texto, t_start/t_end, source_turn/speaker, word_count opcional, metadata ASR.
-- **No:** word-level timestamps, probability por palabra, `pausa_antes`, captions de YouTube, verbose Whisper, full-video `VideoTranscript`.
+Artefactos y cache:
 
-### Qué se elimina al migrar
+```text
+output/<run_id>/speech2text/actor_transcripts/<video_id>.json
+data/<playlist>/videos-<playlist>/<video_id>.wav
+```
 
-| Hoy | Destino |
-|---|---|
-| `ingesta/transcripcion.py` | ❌ |
-| `ingesta/*` (resto) | → `speech2text/audio_fetcher/` |
-| `diarizacion/alineacion.py` | ❌ |
-| `diarizacion/` (speakers/match) | → `speech2text/speaker_timestamps/` |
-| `diarizacion/` (Whisper clips + ActorTranscript) | → `speech2text/transcribe_speech/` |
+- [x] `resume` + `overwrite=true` permite reanudar a nivel de unidad saltando vídeos con transcript válido.
+- [x] `keep_cache=false` elimina WAV cuando corresponde; `true` los conserva.
 
----
+## 7. Configuración
 
+Fuente: `config/config.yaml`, schema `tono-politico.run.v1`.
 
-## Viabilidad y precedentes (investigación)
+- [x] `speech2text.enabled` activa la etapa.
+- [x] `project.data_dir` controla el cache.
+- [x] `speaker_timestamps` contiene actor, pipelines, device, thresholds y `referencia_voz.video_id`.
+- [x] `transcribe_speech` contiene `whisper_model` e `idioma`.
+- [x] `run.max_videos`, `only_video_ids`, `keep_cache`, `resume`, `overwrite`, `fail_fast` viven en `run`.
+- [x] Coerción de booleanos type-safe: `bool("false")` rechazado en vez de aceptado como `True`.
+- [x] `--validate-config` y `--dry-run` pasan.
 
-Evaluación contra documentación oficial y proyectos similares (2026-07).
+## 8. Documentación y validación
 
-### Documentación oficial
+- [x] `docs/module-speech2text.md` y los tres `docs/component_*.md` existen.
+- [x] Los documentos históricos de Ingesta/Diarización fueron eliminados.
 
-| Pieza | Evidencia | Implicación |
-|---|---|---|
-| **pyannote Community-1** | Card HF + blog: `exclusive_speaker_diarization` pensado para reconciliar diarización con STT (Whisper). Entrada mono 16 kHz. | `speaker_timestamps` como capa **sin texto** es el diseño oficial. Preferir exclusive turns. |
-| **Whisper** | `transcribe(..., word_timestamps=False)` produce segmentos turn/utterance. `word_timestamps=True` activa alineación extra y puede cambiar el texto. | Clips actor-only con `word_timestamps=False` y schema turn-level (`actor_transcript.v1`) son correctos. |
-| **yt-dlp** | Pipeline extractor → downloader → postprocessors (audio). Sin acoplamiento a ASR. | `audio_fetcher` aislado es el diseño natural. |
+Suite focalizada:
 
-### Dos arquitecturas en la comunidad
+```bash
+uv run pytest tests/test_audio_fetcher_*.py \
+  tests/test_speaker_timestamps_service.py tests/test_transcribe_speech_service.py \
+  tests/test_speech2text_service.py tests/test_transcripcion_actor.py \
+  tests/test_whisper_clip_transcriber.py tests/test_actor_transcript_serializacion.py \
+  tests/test_diarizacion_matching.py tests/test_diarizacion_adapter.py \
+  tests/test_perfil_desde_output.py tests/test_speech2text_contracts.py \
+  tests/test_execution_observability.py -q
+```
 
-| Enfoque | Orden | Ejemplos | ¿Para tono-politico? |
-|---|---|---|---|
-| **A. ASR full → diarize → assign** | Whisper(X) todo el audio, luego pyannote, merge word↔speaker | WhisperX | No ideal: ASR de todos los speakers + empuja word-level |
-| **B. Diarize → slice → ASR por turno** | pyannote “quién cuándo”, luego Whisper en cada clip | speechlib, faster-whisper + pyannote | **Sí** — patrón adoptado |
+Gates actuales:
 
-Community consensus (faster-whisper discussions): *pyannote timestamps slice audio; Whisper transcribes segments — don't let Whisper segment independently for speaker-attributed text.*
+```bash
+uv run ruff check src/ tests/ main.py          # ✅ All checks passed
+uv run ruff format --check src/ tests/ main.py  # ✅ 76 files formatted
+uv run pytest tests/ -m "not slow" \
+  --ignore=tests/test_discursive_approach_service.py \
+  --ignore=tests/test_topics_approach.py -q     # ✅ 182 passed, 1 skipped
+uv run python main.py --config config/config.yaml --validate-config  # ✅
+uv run python main.py --config config/config.yaml --dry-run          # ✅
+```
 
-### Qué validamos de nuestra propuesta
+- [x] `ty check`: 6 errores en `discursive_approach/topics_approach` (imports legacy de `tono`, `filtrado`, `segmentacion`, `temas`). Bloqueo intencional aceptado; no afecta a `speech2text`.
+- [x] `tests/test_discursive_approach_service.py` y `tests/test_topics_approach.py` excluidos por `ModuleNotFoundError: tono_politico.tono`.
+- [ ] Ejecutar smoke real progresivo y comparar contra baseline actual.
 
-- Split `audio_fetcher` / `speaker_timestamps` / `transcribe_speech`: **viable y alineado a docs**.
-- Orden B (speakers primero, ASR después): **mejor que WhisperX monobloque** para actor-only + identidad.
-- Match de embeddings (enrollment / video_ref + umbrales): stack open-source estándar (identification ≠ diarization).
-- Loop video-por-video + cache delgado: viable; reduce pico de disco.
-- Segmentación/Temas fuera de `speech2text`: correcto (NLP ≠ S2T).
+## 9. Definición de terminado
 
-### Qué no adoptar como núcleo
-
-- **WhisperX como arquitectura core** del refactor: resuelve “quién dijo cada palabra en toda la reunión”, no “solo el actor X con perfil de voz”. Opcional después solo como backend de `transcribe_speech` si duele latencia.
-
-### Riesgos no bloqueantes
-
-| Riesgo | Mitigación |
-|---|---|
-| Overlap / desalinear STT | `exclusive_speaker_diarization` (Community-1) |
-| Compute desperdiciado | ASR solo clips del actor aceptado |
-| Match actor frágil | video_ref + umbrales 0.5/0.7 + skip si ambiguo |
-| Pico disco playlist | 1 video a la vez; borrar `.wav` salvo `--keep-cache` |
-| GPU/RAM pyannote+Whisper | lazy-load; CPU ya contemplado |
-
-### Veredicto
-
-**Viable.** El núcleo de B ya existe en el repo (`transcribir_turnos_actor`, `WhisperFfmpegClipTranscriber`, `identificar_actor`). El refactor a 3 subpaquetes es empaquetado + contratos limpios, no un experimento de ML sin base.
-
----
-## Decisiones resueltas
-
-1. **Service de descarga:** `AudioFetcherService` (`speech2text/audio_fetcher`).
-2. **`PlaylistInfo` / `VideoInfo` slim-down:** solo `nombre` / solo `titulo`+`fecha`. `id`/`url`/`duracion` en `VideoMeta`/`AudioVideo`.
-3. **Speakers y ASR se separan:** `speaker_timestamps` (quién habla) + `transcribe_speech` (qué dijo el actor). Se eliminan `filtrar_por_actor` / `alineacion.py`.
-4. **`SegmentoRaw` y `WordTimestamp` se eliminan de `models.py`.** Segmentación lee `ActorTranscriptSegment.text`.
-5. **Fase 1 = loop video-por-video** en `PipelineRunner`: `speech2text.procesar_one` → `segmentacion.procesar_one` → **Temas una vez** al final. Cache delgado (borrar `.wav` salvo `--keep-cache`).
-6. **Umbrella `speech2text`:** tres subpaquetes `audio_fetcher` + `speaker_timestamps` + `transcribe_speech`. Orquestador: `SpeechToTextService`. **No** incluye segmentación ni temas.
+- [x] Contratos, APIs, configuración y documentación coinciden con el código.
+- [x] Umbrella de tres subpaquetes; diarizar → identificar → ASR actor-only.
+- [x] `ActorTranscript` turn-level y segmentos cortos sin filtros arbitrarios.
+- [x] `PlaylistInfo` mínimo y DTOs pre/post-descarga separados.
+- [x] Wrappers legacy y módulos eliminados (`quality.py`, `actor_transcript.py`, `adapter.py`, `transcripcion_actor.py`, `whisper_clip.py`).
+- [x] Estados de ejecución, persistencia y observabilidad fuera del núcleo (`execution/`).
+- [x] `resume` no confunde directorios vacíos con artefactos completos.
+- [x] Cache y output se validan como archivos/contratos, no sólo por `exists()`.
+- [x] `speaker_timestamps/service.py` carga el modelo; `matching.py` valida resultados.
+- [x] `actor_clip.py` preserva el mapeo entre audio editado y timestamps originales.
+- [x] Checkpoint incremental por vídeo + fingerprint de configuración en manifest.
+- [x] Coerción de booleanos type-safe en `execution/models.py`.
+- [ ] Smoke real y comparación contra datos actuales actualizados.
+- [ ] Desacoplar `discursive_approach/topics_approach` para que el gate global pase.

@@ -19,9 +19,9 @@ uv run python main.py --config config/config.yaml --validate-config
 | `schema_version` | loader `execution.config` | ✅ | Debe ser `tono-politico.run.v1`. |
 | `run` | `ExecutionPlan` | ✅ | `stages`, `resume`, `overwrite`, `keep_cache`, `fail_fast`, `max_videos`, `only_video_ids`. |
 | `input` | dependencias iniciales | ✅ | `playlist_url` o artefactos previos (`actor_transcripts_dir`, `argumentos_path`, `temas_path`). |
-| `output` | `ArtifactPaths` | ✅ | `output/<run_id>/manifest.json`, `resolved-config.yaml`, artefactos por stage. |
+| `output` | `ArtifactPaths` | ✅ | `output/<run_id>/manifest.json`, `resolved-config.yaml`, artefactos por stage, `speech2text/quality.json`. |
 | `project` | defaults globales | ✅ | `data_dir`, `idioma`, `random_state`. |
-| `speech2text.audio_fetcher` | `AudioFetcherService` | ✅ | Descarga/cache de `.wav`. |
+| `speech2text` | `SpeechToTextService` + `ExecutionRunner` | ✅ | Descarga/cache, diarización, ASR actor-only y quality report. |
 | `speech2text.speaker_timestamps` | `SpeakerTimestampsService` | ✅ | pyannote + actor match. |
 | `speech2text.transcribe_speech` | `TranscribeSpeechService` | ✅ | Whisper actor-only por turno. |
 | `discursive_approach.argument_shape` | `ArgumentShapeService` | ✅ | `ActorTranscript[] → Argumento[]`. |
@@ -31,7 +31,7 @@ uv run python main.py --config config/config.yaml --validate-config
 ## Política de ejecución stage-based
 
 - `run.stages` es el contrato explícito de qué etapas correr y en qué orden.
-- `run.resume=true` salta etapas cuyo artefacto de salida ya existe; `run.overwrite=true` y los `force` por stage recomputan aunque exista salida.
+- `run.resume=true` salta etapas cuyo artefacto de salida ya existe; `run.overwrite=true` recomputa aunque exista salida. Los stages discursivos conservan sus opciones `force`; speech2text no duplica ese control.
 - `run.fail_fast=false` permite continuar después de una falla solo si la siguiente etapa todavía tiene dependencias satisfechas por contexto o artefactos externos.
 - `run.max_videos` y `run.only_video_ids` aplican a `speech2text` después del `discover`; el perfil de voz se resuelve con la metadata completa de la playlist.
 - Los `.wav` viven en `data/<playlist>/videos-<playlist>/` como cache runtime: `run.keep_cache=false` los borra al cerrar cada video/ref, `run.keep_cache=true` los conserva para debug.
@@ -42,35 +42,19 @@ uv run python main.py --config config/config.yaml --validate-config
 speech2text:
   enabled: true
 
-  audio_fetcher:
-    enabled: true
-    force_download: false
-    playlist_dir_template: "{playlist}"
-    audio_dir_template: "videos-{playlist}"
-
   speaker_timestamps:
-    enabled: true
     actor_objetivo: "Lilly Téllez"
     pipeline: "pyannote/speaker-diarization-community-1"
     fallback_pipeline: "pyannote-community/speaker-diarization-community-1"
     device: "auto"
     umbral_match: 0.5
     umbral_ambiguo: 0.7
-    match_ambiguo: "descartar_como_otro_speaker"
     referencia_voz:
-      origen: "misma_playlist"
-      max_audios: 1
       video_id: "su9nURIj9XQ"
-      url: "https://www.youtube.com/watch?v=su9nURIj9XQ&list=PLE9Zk7g9R__M&index=8"
-      cache: "solo_ejecucion"
 
   transcribe_speech:
-    enabled: true
     whisper_model: "large-v3-turbo"
     idioma: "es"
-    word_timestamps: false
-    force_retranscribe: false
-    skip_existing_transcripts: true
 ```
 
 ### Diarización / actor

@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from tono_politico.speech2text.audio_fetcher import AudioFetcherService, AudioVideo, VideoMeta
+from tono_politico.speech2text.audio_fetcher import AudioFetcherService, VideoMeta
 from tono_politico.speech2text.speaker_timestamps import SpeakerTimestampsService
 from tono_politico.speech2text.transcribe_speech import TranscribeSpeechService
 
@@ -56,6 +56,7 @@ class SpeechToTextService:
             idioma=idioma,
         )
         self._perfil_ready = False
+        self.last_reason_code: str | None = None
 
     def discover(self, url_playlist: str) -> tuple[PlaylistInfo, list[VideoMeta]]:
         """Mapa de la playlist (sin descargar audio)."""
@@ -68,10 +69,12 @@ class SpeechToTextService:
             True si el perfil quedó listo; False si no se pudo obtener el audio ref.
         """
         if self._perfil_ready:
+            self.last_reason_code = None
             return True
 
         ref_meta = next((m for m in metas if m.video_id == self.video_ref_id), None)
         if ref_meta is None:
+            self.last_reason_code = "reference_profile_missing"
             logger.error(
                 "video_ref_id=%r no está en la playlist; no se puede construir perfil",
                 self.video_ref_id,
@@ -80,11 +83,13 @@ class SpeechToTextService:
 
         ref_audio = self.audio_fetcher.fetch_one(ref_meta, nombre_playlist)
         if ref_audio is None:
+            self.last_reason_code = "reference_profile_missing"
             logger.error("No se pudo descargar audio de referencia %s", self.video_ref_id)
             return False
 
         self.speaker_timestamps.build_perfil(ref_audio)
         self._perfil_ready = True
+        self.last_reason_code = None
         return True
 
     def procesar_one(
@@ -99,49 +104,24 @@ class SpeechToTextService:
         Returns:
             ActorTranscript o None (skip: fallo descarga / sin actor / sin texto).
         """
+        self.last_reason_code = None
         audio = self.audio_fetcher.fetch_one(
             video,
             nombre_playlist,
             archive_path=archive_path,
         )
         if audio is None:
+            self.last_reason_code = "download_failed"
             return None
 
         turnos = self.speaker_timestamps.procesar_one(audio)
         if not turnos:
+            self.last_reason_code = "actor_not_identified"
             return None
 
-        return self.transcribe_speech.procesar_one(audio, turnos)
-
-    def procesar(self, url_playlist: str) -> list[ActorTranscript]:
-        """Wrapper ad-hoc: discover + perfil + procesar_one×N.
-
-        No es el camino del PipelineRunner (que también segmenta y corre Temas).
-        """
-        playlist, metas = self.discover(url_playlist)
-        if not metas:
-            return []
-
-        if not self.ensure_perfil(playlist.nombre, metas):
-            return []
-
-        resultados: list[ActorTranscript] = []
-        for meta in metas:
-            tx = self.procesar_one(meta, playlist.nombre)
-            if tx is not None:
-                resultados.append(tx)
-        return resultados
-
-    def fetch_one(
-        self,
-        video: VideoMeta,
-        nombre_playlist: str,
-        *,
-        archive_path: Path | None = None,
-    ) -> AudioVideo | None:
-        """Atajo a audio_fetcher.fetch_one (p.ej. cleanup de .wav en el runner)."""
-        return self.audio_fetcher.fetch_one(
-            video,
-            nombre_playlist,
-            archive_path=archive_path,
-        )
+        transcript = self.transcribe_speech.procesar_one(audio, turnos)
+        if transcript is None:
+            self.last_reason_code = "asr_empty"
+            return None
+        self.last_reason_code = "transcript_persisted"
+        return transcript

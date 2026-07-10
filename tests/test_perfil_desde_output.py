@@ -3,11 +3,18 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from importlib import import_module
 
 import numpy as np
 import pytest
 
 from tono_politico.speech2text.speaker_timestamps.perfil_voz import construir_perfil_desde_output
+
+
+def test_modulo_no_expone_constructor_legacy() -> None:
+    module = import_module("tono_politico.speech2text.speaker_timestamps.perfil_voz")
+
+    assert not hasattr(module, "construir_perfil")
 
 
 @dataclass
@@ -120,6 +127,40 @@ class TestConstruirPerfilDesdeOutput:
         )
 
         with pytest.raises(ValueError, match="embeddings"):
+            construir_perfil_desde_output(
+                output, actor="Lilly", video_ref_id="ref", pipeline_name="community-1"
+            )
+
+    def test_cantidad_embeddings_debe_coincidir_con_labels(self):
+        output = FakeOutput(
+            _exclusive=FakeExclusiveDiarization(
+                [
+                    (FakeSegment(0, 5), "t0", "SPEAKER_00"),
+                    (FakeSegment(5, 10), "t1", "SPEAKER_01"),
+                ]
+            ),
+            _speaker_dia=FakeDiarization(
+                [
+                    (FakeSegment(0, 5), "t0", "SPEAKER_00"),
+                    (FakeSegment(5, 10), "t1", "SPEAKER_01"),
+                ]
+            ),
+            speaker_embeddings=np.array([[1.0, 0.0, 0.0]]),
+        )
+
+        with pytest.raises(ValueError, match="embeddings"):
+            construir_perfil_desde_output(
+                output, actor="Lilly", video_ref_id="ref", pipeline_name="community-1"
+            )
+
+    def test_segmento_invalido_no_se_usa_para_perfil(self):
+        output = FakeOutput(
+            _exclusive=FakeExclusiveDiarization([(FakeSegment(5, 1), "t0", "SPEAKER_00")]),
+            _speaker_dia=FakeDiarization([(FakeSegment(5, 1), "t0", "SPEAKER_00")]),
+            speaker_embeddings=np.array([[1.0, 0.0, 0.0]]),
+        )
+
+        with pytest.raises(ValueError, match="segmento"):
             construir_perfil_desde_output(
                 output, actor="Lilly", video_ref_id="ref", pipeline_name="community-1"
             )

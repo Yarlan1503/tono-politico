@@ -8,7 +8,7 @@ from typing import Any
 
 import pytest
 
-from tono_politico.speech2text.speaker_timestamps.adapter import (
+from tono_politico.speech2text.speaker_timestamps.service import (
     PyannotePipelineLoadError,
     load_pyannote_pipeline,
     run_pyannote_pipeline,

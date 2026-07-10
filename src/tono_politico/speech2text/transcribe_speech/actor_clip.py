@@ -1,47 +1,15 @@
-"""Transcripción actor-only a partir de turnos atribuidos por diarización.
-
-Este módulo no ejecuta Whisper directamente: recibe un transcriptor de clips por
-inyección de dependencias para mantener el método testeable. La integración con
-Whisper real vendrá en un método posterior.
-"""
+"""Construcción de clips actor-only y remapeo al timeline original."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
 
 from ..models import ActorTranscript, ActorTranscriptSegment, AsrMetadata, TurnoOrador
+from .models import ClipTranscriber, ClipTranscriptSegment
 
 SCHEMA_VERSION = "actor_transcript.v1"
 SCOPE_ACTOR_ONLY = "actor_only"
 ASR_PROVIDER = "whisper"
-
-
-@dataclass
-class ClipTranscriptSegment:
-    """Segmento transcrito dentro de un clip de audio.
-
-    ``t_start`` y ``t_end`` son relativos al inicio del clip entregado al ASR.
-    """
-
-    text: str
-    t_start: float
-    t_end: float
-
-
-class ClipTranscriber(Protocol):
-    """Contrato mínimo para transcribir un rango temporal de un audio."""
-
-    def transcribir_clip(
-        self,
-        audio_path: Path,
-        *,
-        t_start: float,
-        t_end: float,
-        modelo: str,
-        idioma: str,
-    ) -> list[ClipTranscriptSegment]: ...
 
 
 def transcribir_turnos_actor(
@@ -57,15 +25,7 @@ def transcribir_turnos_actor(
     duracion_audio: float | None = None,
     fecha: str | None = None,
 ) -> ActorTranscript:
-    """Transcribe turnos pyannote atribuidos al actor objetivo.
-
-    El padding solo modifica el clip enviado al transcriptor. El contrato
-    persistible conserva los límites originales del turno pyannote como
-    ``source_turn_*`` y reubica los timestamps del ASR en el timeline absoluto.
-
-    ``fecha`` (YYYYMMDD desde VideoMeta/AudioVideo) se copia al ActorTranscript
-    para análisis temporal en discursive_approach.
-    """
+    """Transcribe sólo turnos del actor y conserva source_turn absoluto."""
     ruta_audio = Path(audio_path)
     _validar_entrada(ruta_audio, turnos_actor, video_id, padding_segundos)
 
@@ -102,14 +62,12 @@ def _validar_entrada(
 ) -> None:
     if padding_segundos < 0:
         raise ValueError("padding_segundos no puede ser negativo")
-
     if not audio_path.exists():
         raise FileNotFoundError(f"Audio no encontrado: {audio_path}")
-
     for turno in turnos_actor:
         if turno.video_id != video_id:
             raise ValueError(f"Turno con video_id={turno.video_id!r} no coincide con {video_id!r}")
-        if turno.t_end <= turno.t_start:
+        if turno.t_start < 0 or turno.t_end <= turno.t_start:
             raise ValueError("Turno inválido: t_end debe ser mayor que t_start")
 
 
@@ -122,6 +80,8 @@ def _clip_bounds(
     clip_end = turno.t_end + padding_segundos
     if duracion_audio is not None:
         clip_end = min(duracion_audio, clip_end)
+    if clip_end <= clip_start:
+        raise ValueError("ventana de clip inválida después de aplicar padding")
     return clip_start, clip_end
 
 
@@ -145,7 +105,6 @@ def _segmento_actor_desde_clip(
         turno.t_start,
         turno.t_end,
     )
-
     return ActorTranscriptSegment(
         text=text,
         t_start=t_start,

@@ -111,7 +111,7 @@ class TestSpeakerTimestampsService:
         assert len(turnos) == 1
         assert turnos[0].speaker_id == "SPEAKER_00"
 
-    def test_procesar_one_sin_match_vacio(self, tmp_path: Path) -> None:
+    def test_procesar_one_rechaza_embeddings_inconsistentes(self, tmp_path: Path) -> None:
         svc = SpeakerTimestampsService()
         svc.set_perfil(_perfil())
         exclusive = MagicMock()
@@ -119,11 +119,11 @@ class TestSpeakerTimestampsService:
             (SimpleNamespace(start=0.0, end=1.0), None, "SPEAKER_00"),
         ]
         diar = MagicMock()
-        diar.labels.return_value = ["SPEAKER_00"]
+        diar.labels.return_value = ["SPEAKER_00", "SPEAKER_01"]
         output = SimpleNamespace(
             exclusive_speaker_diarization=exclusive,
             speaker_diarization=diar,
-            speaker_embeddings=[[0.0, 1.0]],
+            speaker_embeddings=[[1.0, 0.0]],
         )
         with (
             patch.object(svc, "_get_pipeline", return_value="pipe"),
@@ -131,16 +131,18 @@ class TestSpeakerTimestampsService:
                 "tono_politico.speech2text.speaker_timestamps.service.run_pyannote_pipeline",
                 return_value=output,
             ),
-            patch(
-                "tono_politico.speech2text.speaker_timestamps.service.identificar_actor",
-                return_value=[
-                    SpeakerMatch(
-                        speaker_id="SPEAKER_00",
-                        distancia=0.99,
-                        aceptado=False,
-                        es_ambiguo=False,
-                    )
-                ],
-            ),
+            pytest.raises(ValueError, match="embeddings"),
         ):
-            assert svc.procesar_one(_audio(tmp_path)) == []
+            svc.procesar_one(_audio(tmp_path))
+
+    def test_procesar_one_rechaza_turno_invalido(self, tmp_path: Path) -> None:
+        svc = SpeakerTimestampsService()
+        svc.set_perfil(_perfil())
+        exclusive = MagicMock()
+        exclusive.itertracks.return_value = [
+            (SimpleNamespace(start=2.0, end=1.0), None, "SPEAKER_00"),
+        ]
+        output = SimpleNamespace(exclusive_speaker_diarization=exclusive)
+
+        with pytest.raises(ValueError, match="t_end"):
+            _extraer_turnos(output, "vid1")

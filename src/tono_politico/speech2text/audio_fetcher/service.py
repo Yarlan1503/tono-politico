@@ -5,8 +5,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from .audio import descargar_audio_result, verificar_cache_videos
-from .cache import ruta_audio
+from .audio import _audio_cache_valido, descargar_audio_result, ruta_audio
 from .models import AudioVideo, PlaylistInfo, VideoMeta
 from .playlist import obtener_info_playlist
 
@@ -40,7 +39,7 @@ class AudioFetcherService:
             ``AudioVideo`` si el ``.wav`` está disponible; ``None`` si falla.
         """
         destino = ruta_audio(nombre_playlist, video.video_id, self.data_dir)
-        if destino.exists():
+        if _audio_cache_valido(destino):
             logger.info(f"Audio en cache: {destino.name}")
             return AudioVideo.from_meta(video, audio_path=destino)
 
@@ -50,36 +49,11 @@ class AudioFetcherService:
             self.data_dir,
             archive_path=archive_path,
         )
-        if not result.ok or result.path is None:
+        if not result.ok or result.path is None or not _audio_cache_valido(result.path):
             logger.warning(
                 "fetch_one skip [%s]: %s",
                 video.video_id,
-                result.error or "sin path",
+                result.error or "sin path o audio inválido",
             )
             return None
         return AudioVideo.from_meta(video, audio_path=result.path)
-
-    def procesar(self, url_playlist: str) -> list[AudioVideo]:
-        """Wrapper ad-hoc: discover + fetch_one×N.
-
-        No es el camino del PipelineRunner en producción (loop por video
-        con diarización/ASR). Útil en tests y uso suelto.
-        """
-        playlist, metas = self.discover(url_playlist)
-        if not metas:
-            logger.info("Playlist vacía, no hay nada que descargar")
-            return []
-
-        estado = verificar_cache_videos(playlist.nombre, metas, self.data_dir)
-        logger.info(
-            "Audios: %s en cache, %s por descargar",
-            len(estado["existentes"]),
-            len(estado["faltantes"]),
-        )
-
-        resultados: list[AudioVideo] = []
-        for meta in metas:
-            audio = self.fetch_one(meta, playlist.nombre)
-            if audio is not None:
-                resultados.append(audio)
-        return resultados

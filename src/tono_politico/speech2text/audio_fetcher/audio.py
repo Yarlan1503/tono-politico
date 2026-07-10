@@ -6,10 +6,27 @@ import logging
 import subprocess
 from pathlib import Path
 
-from .cache import ruta_audio, ruta_dir_videos
 from .models import DownloadResult, VideoMeta
 
 logger = logging.getLogger(__name__)
+
+DATA_DIR = Path("data")
+
+
+def ruta_dir_videos(nombre_playlist: str, base_dir: Path | None = None) -> Path:
+    """Devuelve la ruta al directorio de audios de una playlist."""
+    base = base_dir or DATA_DIR
+    return base / nombre_playlist / f"videos-{nombre_playlist}"
+
+
+def ruta_audio(nombre_playlist: str, video_id: str, base_dir: Path | None = None) -> Path:
+    """Devuelve la ruta al archivo WAV de un vídeo."""
+    return ruta_dir_videos(nombre_playlist, base_dir) / f"{video_id}.wav"
+
+
+def _audio_cache_valido(path: Path) -> bool:
+    """Comprueba que el cache sea un archivo regular no vacío."""
+    return path.is_file() and path.stat().st_size > 0
 
 
 def verificar_cache_videos(
@@ -32,7 +49,7 @@ def verificar_cache_videos(
     faltantes: list[VideoMeta] = []
 
     for video in videos:
-        if ruta_audio(nombre_playlist, video.video_id, base_dir).exists():
+        if _audio_cache_valido(ruta_audio(nombre_playlist, video.video_id, base_dir)):
             existentes.append(video)
         else:
             faltantes.append(video)
@@ -81,6 +98,10 @@ def descargar_audio_result(
 
     try:
         resultado = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+    except FileNotFoundError:
+        error = "yt-dlp no está instalado o no está en PATH"
+        logger.error(error)
+        return DownloadResult(video_id=video.video_id, path=None, ok=False, error=error)
     except subprocess.TimeoutExpired:
         error = f"Timeout después de 600s descargando video {video.video_id}"
         logger.error(error)
@@ -91,8 +112,8 @@ def descargar_audio_result(
         logger.error(f"Error descargando video {video.video_id}: {error[:200]}, saltando")
         return DownloadResult(video_id=video.video_id, path=None, ok=False, error=error)
 
-    if not destino.exists():
-        error = f"Descarga de {video.video_id} completada pero el archivo no existe"
+    if not _audio_cache_valido(destino):
+        error = f"Descarga de {video.video_id} completada pero el audio no es un archivo válido"
         logger.error(error)
         return DownloadResult(video_id=video.video_id, path=None, ok=False, error=error)
 

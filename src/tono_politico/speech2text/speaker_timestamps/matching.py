@@ -26,23 +26,19 @@ logger = logging.getLogger(__name__)
 
 
 def distancia_coseno(a: Sequence[float], b: Sequence[float]) -> float:
-    """Distancia coseno entre dos vectores: 1 - similitud_coseno.
+    """Distancia coseno entre dos vectores: 1 - similitud_coseno."""
+    vector_a = list(a)
+    vector_b = list(b)
+    if len(vector_a) != len(vector_b):
+        raise ValueError(
+            f"dimensiones de embedding incompatibles: {len(vector_a)} != {len(vector_b)}"
+        )
+    if not all(math.isfinite(float(value)) for value in [*vector_a, *vector_b]):
+        raise ValueError("los embeddings deben contener valores finitos")
 
-    Rango:
-        0.0 = vectores idénticos (mismo speaker)
-        1.0 = ortogonales (sin relación)
-        2.0 = opuestos
-
-    Args:
-        a: Primer vector de embedding.
-        b: Segundo vector de embedding.
-
-    Returns:
-        Distancia coseno en [0.0, 2.0].
-    """
-    dot = sum(x * y for x, y in zip(a, b, strict=True))
-    norm_a = math.sqrt(sum(x * x for x in a))
-    norm_b = math.sqrt(sum(y * y for y in b))
+    dot = sum(x * y for x, y in zip(vector_a, vector_b, strict=True))
+    norm_a = math.sqrt(sum(x * x for x in vector_a))
+    norm_b = math.sqrt(sum(y * y for y in vector_b))
 
     if norm_a == 0.0 or norm_b == 0.0:
         return 2.0

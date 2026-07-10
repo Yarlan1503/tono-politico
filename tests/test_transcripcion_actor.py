@@ -16,7 +16,7 @@ def _sut():
     Esto permite que pytest colecte todos los tests RED aunque el módulo aún
     no exista: la falla esperada inicial es ModuleNotFoundError.
     """
-    return import_module("tono_politico.speech2text.transcribe_speech.transcripcion_actor")
+    return import_module("tono_politico.speech2text.transcribe_speech.actor_clip")
 
 
 def _clip(text: str, t_start: float, t_end: float):
