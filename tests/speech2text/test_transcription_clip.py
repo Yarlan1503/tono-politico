@@ -1,4 +1,4 @@
-"""Tests RED para adaptador real Whisper + ffmpeg sobre clips temporales."""
+"""Tests del transcriptor Whisper + ffmpeg sobre clips temporales."""
 
 from __future__ import annotations
 

@@ -121,6 +121,8 @@ Usa `output.speaker_embeddings`, `output.speaker_diarization.labels()` y `output
 
 ## DTOs
 
+Los DTOs canónicos del componente viven en `speaker_timestamps/models.py`. El módulo umbrella `speech2text.models` los reexporta sólo para compatibilidad con imports existentes.
+
 | DTO | Campos | Propósito |
 |---|---|---|
 | `TurnoOrador` | `video_id`, `speaker_id`, `t_start`, `t_end` | rango temporal diarizado |
@@ -135,6 +137,7 @@ Usa `output.speaker_embeddings`, `output.speaker_diarization.labels()` y `output
 | `matching.py` | distancia y clasificación de speakers |
 | `perfil_voz.py` | perfil desde `speaker_embeddings` público |
 | `service.py` | fachada de perfil y diarización por audio |
+| `models.py` | DTOs canónicos de diarización y matching |
 | `__init__.py` | exports públicos del subpaquete |
 
 ## Integración con ASR
@@ -145,9 +148,8 @@ La salida `TurnoOrador[]` se entrega sin texto a `TranscribeSpeechService`. Los 
 
 ```bash
 uv run pytest \
-  tests/test_speaker_timestamps_service.py \
-  tests/test_diarizacion_adapter.py \
-  tests/test_diarizacion_matching.py \
-  tests/test_diarizacion_models.py \
-  tests/test_perfil_desde_output.py -q
+  tests/speech2text/test_speaker_timestamps_service.py \
+  tests/speech2text/test_speaker_timestamps_matching.py \
+  tests/speech2text/test_speaker_timestamps_models.py \
+  tests/speech2text/test_speaker_timestamps_profile.py -q
 ```

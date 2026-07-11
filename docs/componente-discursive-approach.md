@@ -219,7 +219,7 @@ uv run python main.py --resume output/<run_id> --topico 0 --tema "X"
 | `tests/test_topics_cluster.py` | BERTopic fake / dataset chico |
 | `tests/test_topics_approach.py` | firmas, bins, outliers, adapter |
 | `tests/test_discursive_approach_service.py` | orquestador con fakes |
-| `tests/test_fecha_propagacion.py` | VideoMeta → ActorTranscript → Argumento |
+| `tests/test_metadata_propagation.py` | VideoMeta → ActorTranscript → Argumento |
 | `tests/test_argument_shape_smoke.py` | smoke ligero sobre `output/speech2text-smoke/` |
 | `tests/test_pipeline_discursive.py` | `discover_discursive` + persistencia |
 
@@ -229,7 +229,7 @@ uv run pytest \
   tests/test_topics_cluster.py \
   tests/test_topics_approach.py \
   tests/test_discursive_approach_service.py \
-  tests/test_fecha_propagacion.py \
+  tests/test_metadata_propagation.py \
   tests/test_argument_shape_smoke.py \
   tests/test_pipeline_discursive.py -q
 ```

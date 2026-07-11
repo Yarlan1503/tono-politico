@@ -26,7 +26,7 @@ playlist → discover → audio WAV → diarización/match → clips Whisper →
 ```text
 ExecutionRunner
   ├─ SpeechToTextService.discover(url) → PlaylistInfo + VideoMeta[]
-  ├─ SpeechToTextService.ensure_perfil(nombre, metas)
+  ├─ SpeechToTextService.ensure_perfil(playlist, metas)
   │    └─ video_ref_id → AudioVideo → pyannote → PerfilVozActor
   └─ por cada VideoMeta seleccionado
        ├─ si resume + transcript válido → saltar (resumed_from_cache)
@@ -48,8 +48,9 @@ ExecutionRunner
 
 ### `PlaylistInfo`
 
-- [x] Solo contiene `nombre: str`.
-- [x] No contiene `url` ni `videos`; la lista vive en `list[VideoMeta]`.
+- [x] Conserva `nombre` visible y `nombre_cache` sanitizado para filesystem.
+- [x] Conserva `playlist_id` y `url` para provenance.
+- [x] No contiene `videos`; la lista vive en `list[VideoMeta]`.
 
 ### `VideoMeta` — pre-descarga
 
@@ -58,7 +59,8 @@ ExecutionRunner
 | `video_id` | `str` |
 | `url` | `str` |
 | `titulo` | `str` |
-| `fecha` | `str \| None` (`YYYYMMDD`) |
+| `fecha` | `str \\| None` (`YYYYMMDD`) |
+| `fecha_fuente` | `str \\| None` (`upload_date`, `release_date`, `timestamp`, `missing`, `invalid`) |
 | `duracion` | `float` |
 
 ### `AudioVideo` — post-descarga
@@ -81,17 +83,18 @@ ExecutionRunner
 
 ### `ActorTranscript` (`actor_transcript.v1`)
 
-`schema_version`, `video_id`, `actor`, `scope="actor_only"`, `AsrMetadata`, `segments` y `fecha`.
+`schema_version`, `video_id`, `actor`, `scope="actor_only"`, `AsrMetadata`, `segments`, `fecha` y `source` opcional.
 
 Cada segmento contiene `text`, timestamps absolutos, `speaker`, `source_turn_start`, `source_turn_end` y `word_count`.
 
 - [x] Solo contiene texto atribuido al actor.
 - [x] Conserva los límites del turno pyannote y propaga `fecha`.
+- [x] Persiste título, playlist y procedencia de fecha en `source` cuando están disponibles.
 - [x] No contiene words, probabilities, captions ni verbose Whisper.
 
 ### Estados de ejecución (`UnitResult` en `execution/`)
 
-- [x] `UnitResult`: `video_id`, `status` (`ok`/`skipped`/`failed`), `reason_code`, `timings`, `transcript`, `error`.
+- [x] `UnitResult`: `video_id`, `status` (`ok`/`skipped`/`failed`), `reason_code`, `timings`, `transcript`, `error`, título, fecha y fuente.
 - [x] `UNIT_REASON_CODES`: `transcript_persisted`, `resumed_from_cache`, `skipped`, `audio_fetch_failed`, `transcription_failed`, `diarization_failed`, `no_segments`, `error`, `reference_profile_missing`, `audio_invalid`, `download_failed`, `transcript_invalid`, `asr_empty`.
 - [x] El manifest serializa `UnitResult` sin texto de transcripciones.
 
@@ -112,6 +115,7 @@ speech2text/
 │
 ├── speaker_timestamps/
 │   ├── __init__.py
+│   ├── models.py                 # DTOs canónicos de diarización/matching
 │   ├── perfil_voz.py             # construye el perfil de voz
 │   ├── matching.py               # identifica turnos y valida resultados
 │   └── service.py                # carga modelo y orquesta diarización
@@ -142,6 +146,7 @@ APIs canónicas:
 ### `audio_fetcher`
 
 - [x] `obtener_info_playlist()` usa yt-dlp `--flat-playlist`.
+- [x] Fecha: `upload_date` → `release_date` → `timestamp`, con estado explícito cuando falta o es inválida.
 - [x] Sanitiza el nombre y usa `data/<playlist>/videos-<playlist>/<video_id>.wav`.
 - [x] Reutiliza cache (valida archivo regular + tamaño > 0) y no importa Whisper/pyannote.
 - [x] `audio.py` captura `FileNotFoundError` (binario ausente) además de `TimeoutExpired`.
@@ -225,23 +230,22 @@ Fuente: `config/config.yaml`, schema `tono-politico.run.v1`.
 Suite focalizada:
 
 ```bash
-uv run pytest tests/test_audio_fetcher_*.py \
-  tests/test_speaker_timestamps_service.py tests/test_transcribe_speech_service.py \
-  tests/test_speech2text_service.py tests/test_transcripcion_actor.py \
-  tests/test_whisper_clip_transcriber.py tests/test_actor_transcript_serializacion.py \
-  tests/test_diarizacion_matching.py tests/test_diarizacion_adapter.py \
-  tests/test_perfil_desde_output.py tests/test_speech2text_contracts.py \
-  tests/test_execution_observability.py -q
+uv run pytest tests/speech2text/ \
+  tests/test_metadata_propagation.py \
+  tests/test_execution_speech2text_contracts.py \
+  tests/test_execution_speech2text_provenance.py \
+  tests/test_execution_observability.py \
+  tests/test_execution_actor_transcript_artifacts.py -q
 ```
 
 Gates actuales:
 
 ```bash
 uv run ruff check src/ tests/ main.py          # ✅ All checks passed
-uv run ruff format --check src/ tests/ main.py  # ✅ 76 files formatted
+uv run ruff format --check src/ tests/ main.py  # ✅ 76 files already formatted
 uv run pytest tests/ -m "not slow" \
   --ignore=tests/test_discursive_approach_service.py \
-  --ignore=tests/test_topics_approach.py -q     # ✅ 182 passed, 1 skipped
+  --ignore=tests/test_topics_approach.py -q     # ✅ 191 passed, 1 skipped
 uv run python main.py --config config/config.yaml --validate-config  # ✅
 uv run python main.py --config config/config.yaml --dry-run          # ✅
 ```

@@ -15,7 +15,7 @@ import logging
 import math
 from collections.abc import Sequence
 
-from ..models import PerfilVozActor, SpeakerMatch
+from .models import PerfilVozActor, SpeakerMatch
 
 logger = logging.getLogger(__name__)
 

@@ -29,6 +29,9 @@ class VideoQualityMetrics:
     segments_with_one_word: int
     segments_with_two_or_fewer_words: int
     empty_transcript: bool
+    video_title: str | None = None
+    fecha: str | None = None
+    fecha_fuente: str | None = None
 
 
 @dataclass(frozen=True)
@@ -46,9 +49,14 @@ class Speech2TextQualityReport:
     segments_with_one_word: int
     segments_with_two_or_fewer_words: int
     videos: list[VideoQualityMetrics]
+    provenance: dict[str, Any] | None = None
 
 
-def build_quality_report(units: Iterable[UnitResult]) -> Speech2TextQualityReport:
+def build_quality_report(
+    units: Iterable[UnitResult],
+    *,
+    provenance: dict[str, Any] | None = None,
+) -> Speech2TextQualityReport:
     """Construye métricas para éxito, skip y fallo, sin filtrar segmentos."""
     videos = [_video_metrics(unit) for unit in units]
     return Speech2TextQualityReport(
@@ -67,6 +75,7 @@ def build_quality_report(units: Iterable[UnitResult]) -> Speech2TextQualityRepor
             video.segments_with_two_or_fewer_words for video in videos
         ),
         videos=videos,
+        provenance=provenance,
     )
 
 
@@ -94,6 +103,7 @@ def quality_report_to_dict(report: Speech2TextQualityReport) -> dict[str, Any]:
         "total_words": report.total_words,
         "segments_with_one_word": report.segments_with_one_word,
         "segments_with_two_or_fewer_words": report.segments_with_two_or_fewer_words,
+        "provenance": report.provenance,
         "videos": [
             {
                 "video_id": video.video_id,
@@ -104,6 +114,9 @@ def quality_report_to_dict(report: Speech2TextQualityReport) -> dict[str, Any]:
                 "segments_with_one_word": video.segments_with_one_word,
                 "segments_with_two_or_fewer_words": video.segments_with_two_or_fewer_words,
                 "empty_transcript": video.empty_transcript,
+                "video_title": video.video_title,
+                "fecha": video.fecha,
+                "fecha_fuente": video.fecha_fuente,
             }
             for video in report.videos
         ],
@@ -123,4 +136,7 @@ def _video_metrics(unit: UnitResult) -> VideoQualityMetrics:
         segments_with_one_word=sum(count == 1 for count in word_counts),
         segments_with_two_or_fewer_words=sum(count <= 2 for count in word_counts),
         empty_transcript=not word_counts,
+        video_title=unit.video_title,
+        fecha=unit.fecha,
+        fecha_fuente=unit.fecha_fuente,
     )

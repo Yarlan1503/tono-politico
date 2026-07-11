@@ -62,7 +62,7 @@ class SpeechToTextService:
         """Mapa de la playlist (sin descargar audio)."""
         return self.audio_fetcher.discover(url_playlist)
 
-    def ensure_perfil(self, nombre_playlist: str, metas: list[VideoMeta]) -> bool:
+    def ensure_perfil(self, playlist: PlaylistInfo | str, metas: list[VideoMeta]) -> bool:
         """Descarga el video de referencia y construye el perfil de voz.
 
         Returns:
@@ -81,7 +81,7 @@ class SpeechToTextService:
             )
             return False
 
-        ref_audio = self.audio_fetcher.fetch_one(ref_meta, nombre_playlist)
+        ref_audio = self.audio_fetcher.fetch_one(ref_meta, playlist)
         if ref_audio is None:
             self.last_reason_code = "reference_profile_missing"
             logger.error("No se pudo descargar audio de referencia %s", self.video_ref_id)
@@ -95,7 +95,7 @@ class SpeechToTextService:
     def procesar_one(
         self,
         video: VideoMeta,
-        nombre_playlist: str,
+        playlist: PlaylistInfo | str,
         *,
         archive_path: Path | None = None,
     ) -> ActorTranscript | None:
@@ -107,7 +107,7 @@ class SpeechToTextService:
         self.last_reason_code = None
         audio = self.audio_fetcher.fetch_one(
             video,
-            nombre_playlist,
+            playlist,
             archive_path=archive_path,
         )
         if audio is None:

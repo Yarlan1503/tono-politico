@@ -12,9 +12,9 @@
 URL playlist
     │
     ▼ obtener_info_playlist()
-PlaylistInfo(nombre) + VideoMeta[]
+PlaylistInfo(nombre, nombre_cache, playlist_id, url) + VideoMeta[]
     │
-    ▼ AudioFetcherService.fetch_one(meta, nombre)
+    ▼ AudioFetcherService.fetch_one(meta, playlist)
 AudioVideo | None
 ```
 
@@ -36,7 +36,7 @@ class AudioFetcherService:
     def fetch_one(
         self,
         video: VideoMeta,
-        nombre_playlist: str,
+        playlist: PlaylistInfo | str,
         *,
         archive_path: Path | None = None,
     ) -> AudioVideo | None: ...
@@ -44,7 +44,7 @@ class AudioFetcherService:
 
 #### `discover`
 
-Delega en `obtener_info_playlist()` y no descarga audio. El nombre de playlist se sanitiza para que pueda utilizarse en rutas de filesystem.
+Delega en `obtener_info_playlist()` y no descarga audio. Conserva el nombre visible original y calcula `nombre_cache` como identidad segura para filesystem.
 
 #### `fetch_one`
 
@@ -63,9 +63,12 @@ El loop sobre varios videos pertenece al `ExecutionRunner`.
 @dataclass
 class PlaylistInfo:
     nombre: str
+    nombre_cache: str | None = None
+    playlist_id: str | None = None
+    url: str | None = None
 ```
 
-Es deliberadamente mínimo. No contiene URL ni `videos`.
+`nombre` es el nombre visible; `nombre_cache` es la versión sanitizada. `playlist_id` y `url` permiten reconstruir provenance. No contiene la lista de vídeos.
 
 ### `VideoMeta`
 
@@ -76,12 +79,13 @@ DTO de discover, antes de descargar:
 | `video_id` | `str` | identidad estable del video |
 | `url` | `str` | URL resuelta por yt-dlp |
 | `titulo` | `str` | título de presentación/log |
-| `fecha` | `str \| None` | fecha `YYYYMMDD` si existe |
+| `fecha` | `str \\| None` | fecha `YYYYMMDD` si existe |
+| `fecha_fuente` | `str \\| None` | `upload_date`, `release_date`, `timestamp`, `missing` o `invalid` |
 | `duracion` | `float` | duración en segundos |
 
 ### `AudioVideo`
 
-DTO posterior a la descarga. Repite la metadata de `VideoMeta` y añade `audio_path: Path` obligatorio.
+DTO posterior a la descarga. Repite la metadata de `VideoMeta`, conserva `playlist` y añade `audio_path: Path` obligatorio.
 
 ```python
 AudioVideo.from_meta(meta, audio_path=path)
@@ -117,7 +121,7 @@ Resultado estructurado de una unidad de descarga:
 yt-dlp --flat-playlist --extractor-args youtubetab:approximate_date -j --no-warnings <url>
 ```
 
-Por cada línea JSON válida construye `VideoMeta`. La fecha `NA` se normaliza a `None`; la duración ausente se normaliza a `0.0`; si falta la URL individual se construye una URL de YouTube por `video_id`.
+Por cada línea JSON válida construye `VideoMeta`. La fecha canónica es `upload_date`, con fallback a `release_date` y `timestamp`. Cuando no es confiable se conserva `fecha=None` y `fecha_fuente` queda en `missing` o `invalid`; la duración ausente se normaliza a `0.0`; si falta la URL individual se construye una URL de YouTube por `video_id`.
 
 Los errores de yt-dlp producen `RuntimeError` en discover. Las líneas JSON inválidas se omiten con warning.
 
@@ -155,7 +159,7 @@ Un timeout, código de salida no cero, archivo ausente o descarga incompleta dev
 ## Tests
 
 ```bash
-uv run pytest tests/test_audio_fetcher_*.py -q
+uv run pytest tests/speech2text/test_audio_fetcher_*.py -q
 ```
 
 La cobertura incluye sanitización, parseo de playlist, DTOs, cache, descargas exitosas/fallidas y ausencia del wrapper batch legacy `AudioFetcherService.procesar`.

@@ -16,8 +16,8 @@ from typing import Any
 
 from tono_politico.speech2text.audio_fetcher.models import AudioVideo
 
-from ..models import PerfilVozActor, TurnoOrador
 from .matching import identificar_actor
+from .models import PerfilVozActor, TurnoOrador
 from .perfil_voz import construir_perfil_desde_output
 
 logger = logging.getLogger(__name__)

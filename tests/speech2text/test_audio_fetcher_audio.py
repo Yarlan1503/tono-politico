@@ -7,7 +7,10 @@ from pathlib import Path
 from unittest.mock import patch
 
 from tono_politico.speech2text.audio_fetcher.audio import (
+    DATA_DIR,
     descargar_audio_result,
+    ruta_audio,
+    ruta_dir_videos,
     verificar_cache_videos,
 )
 from tono_politico.speech2text.audio_fetcher.models import VideoMeta
@@ -91,3 +94,27 @@ class TestDescargarAudioResult:
         assert result.ok is False
         assert result.path is None
         assert "403" in (result.error or "")
+
+
+def test_data_dir_default() -> None:
+    assert DATA_DIR == Path("data")
+
+
+def test_ruta_dir_videos_default() -> None:
+    assert ruta_dir_videos("MiPlay") == Path("data/MiPlay/videos-MiPlay")
+
+
+def test_ruta_dir_videos_base_dir(tmp_path: Path) -> None:
+    assert ruta_dir_videos("P", tmp_path) == tmp_path / "P" / "videos-P"
+
+
+def test_ruta_audio(tmp_path: Path) -> None:
+    assert ruta_audio("P", "vid001", tmp_path) == tmp_path / "P" / "videos-P" / "vid001.wav"
+
+
+def test_sin_rutas_de_transcripcion() -> None:
+    """audio_fetcher no debe exponer rutas de transcripciones JSON."""
+    import tono_politico.speech2text.audio_fetcher.audio as audio_mod
+
+    assert not hasattr(audio_mod, "ruta_transcripcion")
+    assert not hasattr(audio_mod, "ruta_dir_transcripciones")

@@ -128,7 +128,7 @@ No se persisten:
 - `pausa_antes`;
 - segmentos de otros speakers.
 
-Los segmentos cortos y fórmulas como `Gracias.` se conservan. Su medición pertenece al informe separado `speech2text_quality.v1`, no a este componente.
+Los segmentos cortos y fórmulas como `Gracias.` se conservan. Su medición pertenece al informe separado `speech2text_quality.v2`, no a este componente.
 
 ## Validaciones y casos vacíos
 
@@ -152,8 +152,7 @@ Los segmentos cortos y fórmulas como `Gracias.` se conservan. Su medición pert
 
 ```bash
 uv run pytest \
-  tests/test_transcribe_speech_service.py \
-  tests/test_transcripcion_actor.py \
-  tests/test_whisper_clip_transcriber.py \
-  tests/test_actor_transcript_serializacion.py -q
+  tests/speech2text/test_transcribe_speech_service.py \
+  tests/speech2text/test_actor_clip.py \
+  tests/speech2text/test_transcription_clip.py -q
 ```

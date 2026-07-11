@@ -16,6 +16,7 @@ from tono_politico.speech2text.models import (
     ActorTranscript,
     ActorTranscriptSegment,
     AsrMetadata,
+    TranscriptSource,
 )
 
 
@@ -69,6 +70,23 @@ def test_actor_transcript_to_dict_expone_contrato_actor_only():
             "word_count": 7,
         }
     ]
+
+
+def test_actor_transcript_serializa_source_metadata_opcional():
+    transcript = _actor_transcript()
+    transcript.source = TranscriptSource(
+        playlist_name="Play-PoliTest",
+        playlist_id="PLE9Zk7g9R__M",
+        playlist_url="https://www.youtube.com/playlist?list=PLE9Zk7g9R__M",
+        video_title="Título del video",
+        video_url="https://www.youtube.com/watch?v=su9nURIj9XQ",
+        upload_date="20260101",
+        date_source="upload_date",
+    )
+
+    recovered = actor_transcript_from_json(actor_transcript_to_json(transcript))
+
+    assert recovered.source == transcript.source
 
 
 def test_actor_transcript_json_no_persiste_campos_descartados():

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from tono_politico.speech2text.audio_fetcher.models import AudioVideo
+from tono_politico.speech2text.audio_fetcher.models import AudioVideo, PlaylistInfo
 from tono_politico.speech2text.models import (
     ActorTranscript,
     TurnoOrador,
@@ -43,6 +43,13 @@ def _audio(tmp_path: Path) -> AudioVideo:
         fecha="20260101",
         audio_path=wav,
         duracion=30.0,
+        fecha_fuente="upload_date",
+        playlist=PlaylistInfo(
+            nombre="Play-PoliTest",
+            nombre_cache="Play-PoliTest",
+            playlist_id="PLE9Zk7g9R__M",
+            url="https://www.youtube.com/playlist?list=PLE9Zk7g9R__M",
+        ),
     )
 
 
@@ -71,6 +78,18 @@ class TestTranscribeSpeechService:
         assert "discurso" in tx.segments[0].text
         assert fake.calls == [(1.0, 3.0)]
         assert tx.fecha == "20260101"
+
+    def test_con_texto_conserva_source_metadata(self, tmp_path: Path) -> None:
+        svc = TranscribeSpeechService(actor="Actor", transcriptor=FakeTranscriber())
+
+        tx = svc.procesar_one(_audio(tmp_path), [_turno()])
+
+        assert tx is not None
+        assert tx.source is not None
+        assert tx.source.playlist_name == "Play-PoliTest"
+        assert tx.source.video_title == "T"
+        assert tx.source.upload_date == "20260101"
+        assert tx.source.date_source == "upload_date"
 
     def test_sin_texto_none(self, tmp_path: Path) -> None:
         svc = TranscribeSpeechService(transcriptor=FakeTranscriber(""))

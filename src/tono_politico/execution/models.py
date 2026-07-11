@@ -316,7 +316,7 @@ class UnitResult:
     """Resultado terminal de un vídeo seleccionado.
 
     ``ActorTranscript`` conserva únicamente contenido de dominio. El estado,
-    la razón y los timings de ejecución viven aquí, en el control plane.
+    la razón, los timings y metadata no textual de ejecución viven aquí.
     """
 
     video_id: str
@@ -325,6 +325,10 @@ class UnitResult:
     transcript: ActorTranscript | None = None
     timings: dict[str, float] = field(default_factory=dict)
     error: str | None = None
+    video_title: str | None = None
+    fecha: str | None = None
+    fecha_fuente: str | None = None
+    duration: float | None = None
 
 
 @dataclass(frozen=True)

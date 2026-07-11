@@ -22,6 +22,7 @@ from tono_politico.speech2text.models import (
     ActorTranscript,
     ActorTranscriptSegment,
     AsrMetadata,
+    TranscriptSource,
 )
 
 
@@ -103,9 +104,9 @@ class GranularSpeechToText:
             VideoMeta("vid-3", "https://youtu.be/vid-3", "Video 3", "20260103", 10.0),
         ]
 
-    def ensure_perfil(self, nombre_playlist: str, metas: list[VideoMeta]) -> bool:
-        self.calls.append(f"perfil:{nombre_playlist}:{len(metas)}")
-        ref_audio = ruta_audio(nombre_playlist, "su9nURIj9XQ", self.data_dir)
+    def ensure_perfil(self, playlist: PlaylistInfo, metas: list[VideoMeta]) -> bool:
+        self.calls.append(f"perfil:{playlist.cache_name}:{len(metas)}")
+        ref_audio = ruta_audio(playlist.cache_name, "su9nURIj9XQ", self.data_dir)
         ref_audio.parent.mkdir(parents=True, exist_ok=True)
         ref_audio.write_text("ref wav", encoding="utf-8")
         return True
@@ -113,12 +114,12 @@ class GranularSpeechToText:
     def procesar_one(
         self,
         video: VideoMeta,
-        nombre_playlist: str,
+        playlist: PlaylistInfo,
         *,
         archive_path: Path | None = None,
     ) -> ActorTranscript:
         self.calls.append(f"one:{video.video_id}")
-        audio_path = ruta_audio(nombre_playlist, video.video_id, self.data_dir)
+        audio_path = ruta_audio(playlist.cache_name, video.video_id, self.data_dir)
         audio_path.parent.mkdir(parents=True, exist_ok=True)
         audio_path.write_text("wav", encoding="utf-8")
         return _actor_transcript(video.video_id)
@@ -128,7 +129,7 @@ class FailingGranularSpeechToText(GranularSpeechToText):
     def procesar_one(
         self,
         video: VideoMeta,
-        nombre_playlist: str,
+        playlist: PlaylistInfo,
         *,
         archive_path: Path | None = None,
     ) -> ActorTranscript:
@@ -283,7 +284,17 @@ output:
     artifacts.actor_transcripts_dir.mkdir(parents=True)
     from tono_politico.execution.artifacts import guardar_actor_transcript
 
-    guardar_actor_transcript(_actor_transcript(), artifacts.actor_transcripts_dir / "vid-1.json")
+    transcript = _actor_transcript()
+    transcript.source = TranscriptSource(
+        playlist_name="playlist",
+        playlist_id="playlist-id",
+        playlist_url="playlist-url",
+        video_title="Video 1",
+        video_url="https://youtu.be/vid-1",
+        upload_date="20260101",
+        date_source="upload_date",
+    )
+    guardar_actor_transcript(transcript, artifacts.actor_transcripts_dir / "vid-1.json")
     plan = build_execution_plan(cfg, artifacts)
     calls: list[str] = []
 
@@ -292,6 +303,11 @@ output:
     assert result.exit_code == 0
     assert [stage.status for stage in result.stage_results] == ["skipped", "ok"]
     assert calls == ["argument_shape:1"]
+    assert result.unit_results[0].video_title == "Video 1"
+    assert result.unit_results[0].fecha == "20260101"
+    manifest = json.loads(artifacts.manifest_path.read_text(encoding="utf-8"))
+    assert manifest["speech2text"]["playlist"]["name"] == "playlist"
+    assert manifest["units"][0]["video_title"] == "Video 1"
     assert artifacts.argumentos_path.exists()
 
 
@@ -526,7 +542,8 @@ output:
     checkpoint_path = artifacts.run_dir / "speech2text" / "checkpoint.json"
     assert checkpoint_path.exists()
     checkpoint = json.loads(checkpoint_path.read_text(encoding="utf-8"))
-    assert checkpoint["schema_version"] == "speech2text_checkpoint.v1"
+    assert checkpoint["schema_version"] == "speech2text_checkpoint.v2"
+    assert checkpoint["speech2text"]["playlist"]["cache_name"] == "playlist"
     assert len(checkpoint["units"]) == 3
     assert all(u["status"] == "ok" for u in checkpoint["units"])
     assert [u["video_id"] for u in checkpoint["units"]] == ["vid-1", "vid-2", "vid-3"]

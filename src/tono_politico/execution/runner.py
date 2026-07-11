@@ -142,6 +142,7 @@ class ExecutionRunner:
                 results,
                 exit_code,
                 context.get("unit_results", []),
+                context.get("speech2text_provenance"),
             )
         return ExecutionResult(
             exit_code=exit_code,
@@ -158,8 +159,9 @@ class ExecutionRunner:
         context: dict[str, Any],
     ) -> None:
         if stage == "speech2text":
-            transcripts, unit_results = self._run_speech2text(plan)
+            transcripts, unit_results, provenance = self._run_speech2text(plan)
             context["unit_results"] = unit_results
+            context["speech2text_provenance"] = provenance
             if any(unit.status == "failed" for unit in unit_results):
                 raise RuntimeError("speech2text terminó con unidades fallidas")
             context["actor_transcripts"] = transcripts
@@ -184,7 +186,7 @@ class ExecutionRunner:
     def _run_speech2text(
         self,
         plan: ExecutionPlan,
-    ) -> tuple[list[ActorTranscript], list[UnitResult]]:
+    ) -> tuple[list[ActorTranscript], list[UnitResult], dict[str, Any]]:
         if plan.config.input.playlist_url is None:
             raise RuntimeError("input.playlist_url requerido para speech2text")
         service = self.factories.build_speech2text(plan.config)
@@ -200,28 +202,54 @@ class ExecutionRunner:
         self,
         plan: ExecutionPlan,
         service: Any,
-    ) -> tuple[list[ActorTranscript], list[UnitResult]]:
+    ) -> tuple[list[ActorTranscript], list[UnitResult], dict[str, Any]]:
         playlist, metas = service.discover(plan.config.input.playlist_url)
         metas_seleccionadas = self._filter_video_metas(plan.config, list(metas))
         transcripts: list[ActorTranscript] = []
         unit_results: list[UnitResult] = []
         ref_video_id = plan.config.speech2text.speaker_timestamps.referencia_voz.video_id
+        ref_meta = next((meta for meta in metas if meta.video_id == ref_video_id), None)
+        reference_video = _video_meta_to_dict(ref_meta) or {
+            "video_id": ref_video_id,
+            "present_in_playlist": False,
+        }
+        reference_video["reason_code"] = "reference_profile"
+        reference_video["present_in_playlist"] = ref_meta is not None
+        provenance = {
+            "playlist": {
+                "name": playlist.nombre,
+                "cache_name": playlist.cache_name,
+                "playlist_id": playlist.playlist_id,
+                "url": playlist.url or plan.config.input.playlist_url,
+            },
+            "discovered_videos": len(metas),
+            "selected_videos": len(metas_seleccionadas),
+            "reference_video": reference_video,
+            "reference_profile_status": "pending",
+        }
 
         try:
             if not metas_seleccionadas:
-                return transcripts, unit_results
+                provenance["reference_profile_status"] = "not_run"
+                return transcripts, unit_results, provenance
 
-            if not service.ensure_perfil(playlist.nombre, list(metas)):
+            if not service.ensure_perfil(playlist, list(metas)):
+                provenance["reference_profile_status"] = "failed"
                 unit_results = [
                     UnitResult(
                         video_id=meta.video_id,
                         status="failed",
                         reason_code="reference_profile_missing",
+                        video_title=meta.titulo,
+                        fecha=meta.fecha,
+                        fecha_fuente=meta.fecha_fuente,
+                        duration=meta.duracion,
                     )
                     for meta in metas_seleccionadas
                 ]
                 raise RuntimeError("reference_profile_missing: no se pudo construir el perfil")
 
+            provenance["reference_profile_status"] = "ready"
             for meta in metas_seleccionadas:
                 if plan.config.run.resume and self._already_has_transcript(plan, meta.video_id):
                     existing = cargar_actor_transcript(
@@ -235,14 +263,18 @@ class ExecutionRunner:
                             reason_code="resumed_from_cache",
                             transcript=existing,
                             timings={"total": 0.0},
+                            video_title=meta.titulo,
+                            fecha=meta.fecha,
+                            fecha_fuente=meta.fecha_fuente,
+                            duration=meta.duracion,
                         )
                     )
-                    self._persist_manifest_checkpoint(plan, unit_results)
+                    self._persist_manifest_checkpoint(plan, unit_results, provenance)
                     continue
 
                 started = time.perf_counter()
                 try:
-                    transcript = service.procesar_one(meta, playlist.nombre)
+                    transcript = service.procesar_one(meta, playlist)
                     reason_code = getattr(service, "last_reason_code", None)
                     elapsed = time.perf_counter() - started
                     if transcript is None:
@@ -252,6 +284,10 @@ class ExecutionRunner:
                                 status="skipped",
                                 reason_code=reason_code or "asr_empty",
                                 timings={"total": elapsed},
+                                video_title=meta.titulo,
+                                fecha=meta.fecha,
+                                fecha_fuente=meta.fecha_fuente,
+                                duration=meta.duracion,
                             )
                         )
                     else:
@@ -264,6 +300,10 @@ class ExecutionRunner:
                                 reason_code="transcript_persisted",
                                 transcript=transcript,
                                 timings={"total": elapsed},
+                                video_title=meta.titulo,
+                                fecha=meta.fecha,
+                                fecha_fuente=meta.fecha_fuente,
+                                duration=meta.duracion,
                             )
                         )
                 except Exception as exc:
@@ -274,18 +314,22 @@ class ExecutionRunner:
                             reason_code=_reason_code_for_exception(exc),
                             timings={"total": time.perf_counter() - started},
                             error=str(exc),
+                            video_title=meta.titulo,
+                            fecha=meta.fecha,
+                            fecha_fuente=meta.fecha_fuente,
+                            duration=meta.duracion,
                         )
                     )
                     if plan.config.run.fail_fast:
                         raise
                 finally:
-                    self._cleanup_audio(plan, playlist.nombre, meta.video_id)
-                    self._persist_manifest_checkpoint(plan, unit_results)
+                    self._cleanup_audio(plan, playlist.cache_name, meta.video_id)
+                    self._persist_manifest_checkpoint(plan, unit_results, provenance)
         finally:
-            self._cleanup_audio(plan, playlist.nombre, ref_video_id)
-            self._persist_speech2text_quality(plan, unit_results)
+            self._cleanup_audio(plan, playlist.cache_name, ref_video_id)
+            self._persist_speech2text_quality(plan, unit_results, provenance)
 
-        return transcripts, unit_results
+        return transcripts, unit_results, provenance
 
     def _filter_video_metas(self, cfg: RunConfig, metas: list[Any]) -> list[Any]:
         return select_video_metas(
@@ -305,9 +349,10 @@ class ExecutionRunner:
         self,
         plan: ExecutionPlan,
         unit_results: list[UnitResult],
+        provenance: dict[str, Any] | None = None,
     ) -> None:
         guardar_quality_report(
-            build_quality_report(unit_results),
+            build_quality_report(unit_results, provenance=provenance),
             plan.artifacts.speech2text_quality_path,
         )
 
@@ -315,12 +360,14 @@ class ExecutionRunner:
         self,
         plan: ExecutionPlan,
         unit_results: list[UnitResult],
+        provenance: dict[str, Any],
     ) -> None:
         """Escribe checkpoint incremental con las unidades procesadas hasta ahora."""
         checkpoint_path = plan.artifacts.run_dir / "speech2text" / "checkpoint.json"
         checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
         data = {
-            "schema_version": "speech2text_checkpoint.v1",
+            "schema_version": "speech2text_checkpoint.v2",
+            "speech2text": provenance,
             "units": [_unit_result_to_manifest(unit) for unit in unit_results],
         }
         checkpoint_path.write_text(
@@ -424,21 +471,69 @@ class ExecutionRunner:
         if stage.name == "speech2text":
             transcripts = self._load_actor_transcripts(plan.artifacts.actor_transcripts_dir)
             context["actor_transcripts"] = transcripts
+            context["speech2text_provenance"] = self._load_speech2text_provenance(plan, transcripts)
             context["unit_results"] = [
                 UnitResult(
                     video_id=transcript.video_id,
                     status="ok",
                     reason_code="resumed_from_artifact",
                     transcript=transcript,
+                    video_title=transcript.source.video_title if transcript.source else None,
+                    fecha=(
+                        transcript.source.upload_date
+                        if transcript.source and transcript.source.upload_date is not None
+                        else transcript.fecha
+                    ),
+                    fecha_fuente=transcript.source.date_source if transcript.source else None,
                 )
                 for transcript in transcripts
             ]
             if not plan.artifacts.speech2text_quality_path.exists():
-                self._persist_speech2text_quality(plan, context["unit_results"])
+                self._persist_speech2text_quality(
+                    plan,
+                    context["unit_results"],
+                    context["speech2text_provenance"],
+                )
         elif stage.name == "argument_shape":
             context["argumentos"] = cargar_argumentos(plan.artifacts.argumentos_path)
         elif stage.name == "topics_cluster":
             context["temas"] = cargar_resultado_temas(plan.artifacts.temas_path)
+
+    def _load_speech2text_provenance(
+        self,
+        plan: ExecutionPlan,
+        transcripts: list[ActorTranscript],
+    ) -> dict[str, Any] | None:
+        """Recupera provenance existente sin inventar datos ausentes."""
+        quality_path = plan.artifacts.speech2text_quality_path
+        if quality_path.exists():
+            try:
+                quality = json.loads(quality_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                quality = None
+            if isinstance(quality, dict) and isinstance(quality.get("provenance"), dict):
+                return quality["provenance"]
+
+        source = next((transcript.source for transcript in transcripts if transcript.source), None)
+        if source is None:
+            return None
+        reference_id = plan.config.speech2text.speaker_timestamps.referencia_voz.video_id
+        return {
+            "playlist": {
+                "name": source.playlist_name,
+                "cache_name": source.playlist_name,
+                "playlist_id": source.playlist_id,
+                "url": source.playlist_url,
+            },
+            "discovered_videos": None,
+            "selected_videos": len(transcripts),
+            "reference_video": {
+                "video_id": reference_id,
+                "reason_code": "reference_profile",
+                "present_in_playlist": None,
+            },
+            "reference_profile_status": "resumed_from_artifact",
+        }
 
     def _get_actor_transcripts(
         self,
@@ -482,13 +577,15 @@ class ExecutionRunner:
         results: list[StageResult],
         exit_code: int,
         unit_results: list[UnitResult],
+        speech2text_provenance: dict[str, Any] | None,
     ) -> Path:
         plan.artifacts.manifest_path.parent.mkdir(parents=True, exist_ok=True)
         data = {
-            "schema_version": "tono-politico.execution_manifest.v1",
+            "schema_version": "tono-politico.execution_manifest.v2",
             "run_id": plan.run_id,
             "status": "ok" if exit_code == 0 else "failed",
             "stages": [_jsonable(asdict(result)) for result in results],
+            "speech2text": speech2text_provenance,
             "units": [_unit_result_to_manifest(result) for result in unit_results],
             "artifacts": _jsonable(asdict(plan.artifacts)),
             "config_fingerprint": _config_fingerprint(plan.config),
@@ -518,6 +615,23 @@ def _unit_result_to_manifest(result: UnitResult) -> dict[str, Any]:
         "reason_code": result.reason_code,
         "timings": _jsonable(result.timings),
         "error": result.error,
+        "video_title": result.video_title,
+        "fecha": result.fecha,
+        "fecha_fuente": result.fecha_fuente,
+        "duration": result.duration,
+    }
+
+
+def _video_meta_to_dict(meta: VideoMeta | None) -> dict[str, Any] | None:
+    if meta is None:
+        return None
+    return {
+        "video_id": meta.video_id,
+        "url": meta.url,
+        "title": meta.titulo,
+        "upload_date": meta.fecha,
+        "date_source": meta.fecha_fuente,
+        "duration": meta.duracion,
     }
 
 

@@ -1,4 +1,4 @@
-"""Tests RED para transcribir turnos actor-only con Whisper mockeable."""
+"""Tests de recorte y transcripción de turnos actor-only con Whisper mockeable."""
 
 from __future__ import annotations
 

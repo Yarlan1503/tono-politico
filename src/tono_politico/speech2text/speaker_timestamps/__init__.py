@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ..models import PerfilVozActor, SpeakerMatch, TurnoOrador
+from .models import PerfilVozActor, SpeakerMatch, TurnoOrador
 from .service import SpeakerTimestampsService
 
 __all__ = [

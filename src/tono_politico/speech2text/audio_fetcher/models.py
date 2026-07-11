@@ -23,6 +23,7 @@ class VideoMeta:
     titulo: str
     fecha: str | None
     duracion: float
+    fecha_fuente: str | None = None
 
 
 @dataclass(frozen=True)
@@ -44,9 +45,17 @@ class AudioVideo:
     fecha: str | None
     audio_path: Path
     duracion: float
+    fecha_fuente: str | None = None
+    playlist: PlaylistInfo | None = None
 
     @classmethod
-    def from_meta(cls, meta: VideoMeta, *, audio_path: Path) -> AudioVideo:
+    def from_meta(
+        cls,
+        meta: VideoMeta,
+        *,
+        audio_path: Path,
+        playlist: PlaylistInfo | None = None,
+    ) -> AudioVideo:
         """Construye un ``AudioVideo`` a partir de metadata pre-descarga y la ruta del wav."""
         return cls(
             video_id=meta.video_id,
@@ -55,6 +64,8 @@ class AudioVideo:
             fecha=meta.fecha,
             audio_path=audio_path,
             duracion=meta.duracion,
+            fecha_fuente=meta.fecha_fuente,
+            playlist=playlist,
         )
 
 
@@ -77,6 +88,14 @@ class DownloadResult:
 
 @dataclass
 class PlaylistInfo:
-    """Identidad de una playlist usada para resolver rutas de cache."""
+    """Identidad visible y de cache de una playlist."""
 
     nombre: str
+    nombre_cache: str | None = None
+    playlist_id: str | None = None
+    url: str | None = None
+
+    @property
+    def cache_name(self) -> str:
+        """Devuelve la clave de cache, con fallback para fixtures legacy."""
+        return self.nombre_cache or self.nombre

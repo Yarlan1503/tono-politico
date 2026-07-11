@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from tono_politico.speech2text.audio_fetcher.models import PlaylistInfo
 from tono_politico.speech2text.audio_fetcher.playlist import (
     obtener_info_playlist,
     sanitizar_nombre_directorio,
@@ -60,36 +61,16 @@ class TestObtenerInfoPlaylist:
         ):
             playlist, metas = obtener_info_playlist("https://youtube.com/playlist?list=FAKE")
 
-        assert playlist.nombre == "Test_Playlist"
-        assert not hasattr(playlist, "url")
-        assert not hasattr(playlist, "videos")
+        assert playlist.nombre == "Test Playlist"
+        assert playlist.nombre_cache == "Test_Playlist"
+        assert playlist.url is not None
+        assert playlist.url.endswith("FAKE")
         assert len(metas) == 2
         assert metas[0].video_id == "vid001"
         assert metas[0].titulo == "Video Uno"
         assert metas[0].duracion == 120.0
         assert metas[0].fecha == "20260101"
         assert metas[1].fecha is None
-
-    def test_fecha_usa_release_date_si_upload_date_no_disponible(self) -> None:
-        line = json.dumps(
-            {
-                "id": "vid-release",
-                "title": "Video con release date",
-                "duration": 30.0,
-                "upload_date": "NA",
-                "release_date": "20251231",
-                "playlist": "P",
-            }
-        )
-        mock_result = MagicMock(returncode=0, stdout=line, stderr="")
-
-        with patch(
-            "tono_politico.speech2text.audio_fetcher.playlist.subprocess.run",
-            return_value=mock_result,
-        ):
-            _playlist, metas = obtener_info_playlist("https://youtube.com/playlist?list=P")
-
-        assert metas[0].fecha == "20251231"
 
     def test_duracion_invalida_se_normaliza_a_cero(self) -> None:
         line = json.dumps(
@@ -195,3 +176,86 @@ class TestObtenerInfoPlaylist:
             _playlist, metas = obtener_info_playlist("https://youtube.com/playlist?list=P")
 
         assert metas[0].fecha is None
+
+
+def test_playlist_info_separa_nombre_visible_y_nombre_de_cache():
+    playlist = PlaylistInfo(
+        nombre="Play PoliTest",
+        nombre_cache="Play_PoliTest",
+        playlist_id="PLE9Zk7g9R__M",
+        url="https://www.youtube.com/playlist?list=PLE9Zk7g9R__M",
+    )
+
+    assert playlist.nombre == "Play PoliTest"
+    assert playlist.cache_name == "Play_PoliTest"
+    assert playlist.playlist_id == "PLE9Zk7g9R__M"
+    assert playlist.url is not None
+    assert playlist.url.endswith("PLE9Zk7g9R__M")
+
+
+def test_discover_conserva_identidad_titulo_fecha_y_fuente():
+    result = MagicMock(
+        returncode=0,
+        stderr="",
+        stdout=json.dumps(
+            {
+                "id": "71GicqtYqpQ",
+                "title": "Senator Lilly Téllez speaks out",
+                "playlist": "Play-PoliTest",
+                "playlist_title": "Play-PoliTest",
+                "playlist_id": "PLE9Zk7g9R__M",
+                "upload_date": "20260511",
+                "duration": 316.0,
+            }
+        ),
+    )
+
+    with patch(
+        "tono_politico.speech2text.audio_fetcher.playlist.subprocess.run",
+        return_value=result,
+    ):
+        playlist, videos = obtener_info_playlist("https://youtube.com/playlist?list=PLE9Zk7g9R__M")
+
+    assert playlist.nombre == "Play-PoliTest"
+    assert playlist.nombre_cache == "Play-PoliTest"
+    assert playlist.playlist_id == "PLE9Zk7g9R__M"
+    assert videos[0].titulo == "Senator Lilly Téllez speaks out"
+    assert videos[0].fecha == "20260511"
+    assert videos[0].fecha_fuente == "upload_date"
+
+
+def _discover_video_metadata(**fields: object):
+    payload = {
+        "id": "video-1",
+        "title": "Video 1",
+        "playlist_title": "Playlist",
+        "playlist_id": "playlist-id",
+        "duration": 10.0,
+        **fields,
+    }
+    result = MagicMock(returncode=0, stderr="", stdout=json.dumps(payload))
+    with patch(
+        "tono_politico.speech2text.audio_fetcher.playlist.subprocess.run",
+        return_value=result,
+    ):
+        return obtener_info_playlist("https://youtube.com/playlist?list=playlist-id")[1][0]
+
+
+@pytest.mark.parametrize(
+    ("fields", "expected_date", "expected_source"),
+    [
+        ({"release_date": "20260512"}, "20260512", "release_date"),
+        ({"timestamp": 1778457600}, "20260511", "timestamp"),
+        ({}, None, "missing"),
+        ({"upload_date": "not-a-date"}, None, "invalid"),
+    ],
+)
+def test_fecha_tiene_fallback_y_estado_explicitos(
+    fields: dict[str, object],
+    expected_date: str | None,
+    expected_source: str,
+):
+    video = _discover_video_metadata(**fields)
+
+    assert video.fecha == expected_date
+    assert video.fecha_fuente == expected_source

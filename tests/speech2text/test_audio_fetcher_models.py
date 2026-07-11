@@ -29,12 +29,13 @@ def test_video_meta_fields() -> None:
     assert meta.duracion == 3600.5
 
 
-def test_playlist_info_solo_expone_nombre() -> None:
+def test_playlist_info_preserva_identidad_opcional() -> None:
     playlist = PlaylistInfo(nombre="Playlist")
 
     assert playlist.nombre == "Playlist"
-    assert not hasattr(playlist, "url")
-    assert not hasattr(playlist, "videos")
+    assert playlist.cache_name == "Playlist"
+    assert playlist.url is None
+    assert playlist.playlist_id is None
 
 
 def test_video_meta_fecha_opcional() -> None:

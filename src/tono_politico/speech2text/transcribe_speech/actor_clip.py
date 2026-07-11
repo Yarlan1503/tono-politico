@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ..models import ActorTranscript, ActorTranscriptSegment, AsrMetadata, TurnoOrador
+from ..models import ActorTranscript, ActorTranscriptSegment, AsrMetadata
+from ..speaker_timestamps.models import TurnoOrador
 from .models import ClipTranscriber, ClipTranscriptSegment
 
 SCHEMA_VERSION = "actor_transcript.v1"

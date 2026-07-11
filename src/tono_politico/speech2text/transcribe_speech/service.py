@@ -13,7 +13,8 @@ from typing import Any
 
 from tono_politico.speech2text.audio_fetcher.models import AudioVideo
 
-from ..models import ActorTranscript, TurnoOrador
+from ..models import ActorTranscript, TranscriptSource
+from ..speaker_timestamps.models import TurnoOrador
 from .actor_clip import transcribir_turnos_actor
 from .transcription_clip import WhisperFfmpegClipTranscriber
 
@@ -70,6 +71,16 @@ class TranscribeSpeechService:
         if transcript.fecha is None and audio.fecha is not None:
             # defensa en profundidad si el builder omitiera fecha
             transcript.fecha = audio.fecha
+        playlist = audio.playlist
+        transcript.source = TranscriptSource(
+            playlist_name=playlist.nombre if playlist is not None else None,
+            playlist_id=playlist.playlist_id if playlist is not None else None,
+            playlist_url=playlist.url if playlist is not None else None,
+            video_title=audio.titulo,
+            video_url=audio.url,
+            upload_date=audio.fecha,
+            date_source=audio.fecha_fuente,
+        )
         return transcript
 
     def _get_transcriptor(self) -> Any:

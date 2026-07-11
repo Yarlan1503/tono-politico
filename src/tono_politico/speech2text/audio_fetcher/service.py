@@ -12,6 +12,12 @@ from .playlist import obtener_info_playlist
 logger = logging.getLogger(__name__)
 
 
+def _coerce_playlist_info(playlist: PlaylistInfo | str) -> PlaylistInfo:
+    if isinstance(playlist, PlaylistInfo):
+        return playlist
+    return PlaylistInfo(nombre=playlist, nombre_cache=playlist)
+
+
 class AudioFetcherService:
     """Descarga de audio + metadata de playlists de YouTube.
 
@@ -29,7 +35,7 @@ class AudioFetcherService:
     def fetch_one(
         self,
         video: VideoMeta,
-        nombre_playlist: str,
+        playlist: PlaylistInfo | str,
         *,
         archive_path: Path | None = None,
     ) -> AudioVideo | None:
@@ -38,14 +44,15 @@ class AudioFetcherService:
         Returns:
             ``AudioVideo`` si el ``.wav`` está disponible; ``None`` si falla.
         """
-        destino = ruta_audio(nombre_playlist, video.video_id, self.data_dir)
+        playlist_info = _coerce_playlist_info(playlist)
+        destino = ruta_audio(playlist_info.cache_name, video.video_id, self.data_dir)
         if _audio_cache_valido(destino):
             logger.info(f"Audio en cache: {destino.name}")
-            return AudioVideo.from_meta(video, audio_path=destino)
+            return AudioVideo.from_meta(video, audio_path=destino, playlist=playlist_info)
 
         result = descargar_audio_result(
             video,
-            nombre_playlist,
+            playlist_info.cache_name,
             self.data_dir,
             archive_path=archive_path,
         )
@@ -56,4 +63,4 @@ class AudioFetcherService:
                 result.error or "sin path o audio inválido",
             )
             return None
-        return AudioVideo.from_meta(video, audio_path=result.path)
+        return AudioVideo.from_meta(video, audio_path=result.path, playlist=playlist_info)

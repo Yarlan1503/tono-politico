@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 
-from ..models import PerfilVozActor
+from .models import PerfilVozActor
 
 logger = logging.getLogger(__name__)
 

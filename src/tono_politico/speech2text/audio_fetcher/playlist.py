@@ -7,7 +7,8 @@ import logging
 import math
 import re
 import subprocess
-from datetime import datetime
+from datetime import UTC, datetime
+from urllib.parse import parse_qs, urlparse
 
 from .models import PlaylistInfo, VideoMeta
 
@@ -22,8 +23,9 @@ def sanitizar_nombre_directorio(nombre: str) -> str:
     return nombre or "playlist_sin_nombre"
 
 
-def _normalizar_fecha(data: dict[str, object]) -> str | None:
-    """Obtiene una fecha válida priorizando upload_date sobre release_date."""
+def _normalizar_fecha(data: dict[str, object]) -> tuple[str | None, str]:
+    """Obtiene fecha y fuente, priorizando upload_date sobre release_date."""
+    invalid = False
     for field in ("upload_date", "release_date"):
         value = data.get(field)
         if not isinstance(value, str) or value in {"", "NA"}:
@@ -32,9 +34,30 @@ def _normalizar_fecha(data: dict[str, object]) -> str | None:
             datetime.strptime(value, "%Y%m%d")
         except ValueError:
             logger.warning("Fecha inválida en %s: %r", field, value)
+            invalid = True
             continue
-        return value
-    return None
+        return value, field
+
+    timestamp = data.get("timestamp")
+    if timestamp not in (None, "", "NA"):
+        try:
+            if isinstance(timestamp, str):
+                if timestamp.replace(".", "", 1).isdigit():
+                    parsed = datetime.fromtimestamp(float(timestamp), tz=UTC)
+                else:
+                    parsed = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+                    if parsed.tzinfo is None:
+                        parsed = parsed.replace(tzinfo=UTC)
+            elif isinstance(timestamp, (int, float)):
+                parsed = datetime.fromtimestamp(timestamp, tz=UTC)
+            else:
+                raise TypeError("timestamp no es numérico ni ISO")
+            return parsed.strftime("%Y%m%d"), "timestamp"
+        except (TypeError, ValueError, OverflowError):
+            logger.warning("Fecha inválida en timestamp: %r", timestamp)
+            invalid = True
+
+    return None, "invalid" if invalid else "missing"
 
 
 def _normalizar_duracion(value: object) -> float:
@@ -89,7 +112,8 @@ def obtener_info_playlist(url: str) -> tuple[PlaylistInfo, list[VideoMeta]]:
             f"yt-dlp falló al obtener info de la playlist: {resultado.stderr.strip()}"
         )
 
-    nombre = "playlist_sin_nombre"
+    nombre_original: str | None = None
+    playlist_id: str | None = None
     videos: list[VideoMeta] = []
 
     for linea in resultado.stdout.strip().splitlines():
@@ -102,14 +126,15 @@ def obtener_info_playlist(url: str) -> tuple[PlaylistInfo, list[VideoMeta]]:
             logger.warning(f"No se pudo parsear línea JSON: {linea[:80]}...")
             continue
 
-        if nombre == "playlist_sin_nombre":
-            nombre = data.get("playlist") or "playlist_sin_nombre"
+        if nombre_original is None:
+            nombre_original = data.get("playlist_title") or data.get("playlist")
+            playlist_id = data.get("playlist_id")
 
         video_id = data.get("id")
         if not video_id:
             continue
 
-        fecha = _normalizar_fecha(data)
+        fecha, fecha_fuente = _normalizar_fecha(data)
         duracion = _normalizar_duracion(data.get("duration"))
 
         videos.append(
@@ -119,11 +144,20 @@ def obtener_info_playlist(url: str) -> tuple[PlaylistInfo, list[VideoMeta]]:
                 titulo=data.get("title") or "Sin título",
                 fecha=fecha,
                 duracion=duracion,
+                fecha_fuente=fecha_fuente,
             )
         )
 
-    nombre = sanitizar_nombre_directorio(nombre)
-    logger.info(f"Playlist '{nombre}': {len(videos)} videos encontrados")
+    nombre_original = nombre_original or "playlist_sin_nombre"
+    nombre_cache = sanitizar_nombre_directorio(nombre_original)
+    if playlist_id is None:
+        playlist_id = parse_qs(urlparse(url).query).get("list", [None])[0]
+    logger.info("Playlist '%s': %s videos encontrados", nombre_original, len(videos))
 
-    playlist = PlaylistInfo(nombre=nombre)
+    playlist = PlaylistInfo(
+        nombre=nombre_original,
+        nombre_cache=nombre_cache,
+        playlist_id=playlist_id,
+        url=url,
+    )
     return playlist, videos

@@ -4,7 +4,7 @@
 >
 > **Entrada:** playlist de YouTube + configuración de actor/modelos.
 >
-> **Salida:** `ActorTranscript[]` actor-only, turn-level, más el informe separado `speech2text_quality.v1`.
+> **Salida:** `ActorTranscript[]` actor-only, turn-level, más provenance durable en transcript, manifest, checkpoint y `speech2text_quality.v2`.
 
 ## Propósito
 
@@ -22,9 +22,9 @@ El módulo no realiza segmentación semántica, descubrimiento de temas, clasifi
 ExecutionRunner
     │
     ├── SpeechToTextService.discover(playlist_url)
-    │       └── PlaylistInfo(nombre), VideoMeta[]
+    │       └── PlaylistInfo(nombre, nombre_cache, id, url), VideoMeta[]
     │
-    ├── SpeechToTextService.ensure_perfil(nombre, metas)
+    ├── SpeechToTextService.ensure_perfil(playlist, metas)
     │       └── descarga video_ref_id → pyannote → PerfilVozActor
     │
     └── por cada VideoMeta seleccionado
@@ -63,14 +63,14 @@ class SpeechToTextService:
 
     def ensure_perfil(
         self,
-        nombre_playlist: str,
+        playlist: PlaylistInfo | str,
         metas: list[VideoMeta],
     ) -> bool: ...
 
     def procesar_one(
         self,
         video: VideoMeta,
-        nombre_playlist: str,
+        playlist: PlaylistInfo | str,
         *,
         archive_path: Path | None = None,
     ) -> ActorTranscript | None: ...
@@ -96,12 +96,12 @@ El orquestador no expone wrappers batch legacy como `procesar()` ni atajos como 
 
 | DTO | Campos | Etapa |
 |---|---|---|
-| `PlaylistInfo` | `nombre` | identidad de playlist/cache |
-| `VideoMeta` | `video_id`, `url`, `titulo`, `fecha`, `duracion` | discover, antes de efectos secundarios |
-| `AudioVideo` | metadata de `VideoMeta` + `audio_path: Path` | audio local disponible |
+| `PlaylistInfo` | `nombre`, `nombre_cache`, `playlist_id`, `url` | identidad visible, cache y provenance |
+| `VideoMeta` | `video_id`, `url`, `titulo`, `fecha`, `fecha_fuente`, `duracion` | discover, antes de efectos secundarios |
+| `AudioVideo` | metadata de `VideoMeta` + `playlist` + `audio_path: Path` | audio local disponible |
 | `DownloadResult` | `video_id`, `path`, `ok`, `error` | resultado estructurado de descarga |
 
-`PlaylistInfo` no contiene URL ni lista de videos. La lista pre-descarga vive en `list[VideoMeta]`.
+`PlaylistInfo.nombre` conserva el nombre visible original; `nombre_cache` es la versión sanitizada para filesystem. La lista pre-descarga vive en `list[VideoMeta]`.
 
 ### Diarización
 
@@ -130,7 +130,14 @@ El transcript persistido es actor-only y turn-level:
       "word_count": 23
     }
   ],
-  "fecha": "20260101"
+  "fecha": "20260101",
+  "source": {
+    "playlist_name": "Play-PoliTest",
+    "playlist_id": "PLE9Zk7g9R__M",
+    "video_title": "Título del video",
+    "upload_date": "20260101",
+    "date_source": "upload_date"
+  }
 }
 ```
 
@@ -144,7 +151,9 @@ No se persisten timestamps por palabra, probabilidades, captions de YouTube, dat
 output/<run_id>/speech2text/quality.json
 ```
 
-Schema: `speech2text_quality.v1`.
+Schema: `speech2text_quality.v2`.
+
+El informe incluye `provenance` con la identidad de playlist, el inventario del vídeo de referencia y los conteos descubiertos/seleccionados. Cada entrada de `videos` conserva título, fecha y `fecha_fuente`.
 
 Mide, por video y de forma agregada:
 
@@ -186,6 +195,7 @@ No existen opciones anidadas `force_download`, `force_retranscribe`, `skip_exist
 output/<run_id>/
 ├── speech2text/
 │   ├── actor_transcripts/<video_id>.json
+│   ├── checkpoint.json
 │   └── quality.json
 ├── manifest.json
 └── resolved-config.yaml
@@ -199,7 +209,7 @@ Los `.wav` son cache runtime. Con `run.keep_cache=false`, el runner los elimina 
 ## API pública de paquetes
 
 - `audio_fetcher`: `AudioFetcherService`, `VideoMeta`, `AudioVideo`, `DownloadResult`, `PlaylistInfo`.
-- `speaker_timestamps`: `SpeakerTimestampsService`, `TurnoOrador`, `PerfilVozActor`, `SpeakerMatch`.
+- `speaker_timestamps`: `SpeakerTimestampsService`, `TurnoOrador`, `PerfilVozActor`, `SpeakerMatch` (DTOs canónicos en `speaker_timestamps/models.py`).
 - `transcribe_speech`: `TranscribeSpeechService`, `ActorTranscript`, `ActorTranscriptSegment`, `AsrMetadata`.
 - umbrella `speech2text`: `SpeechToTextService`, servicios y DTOs canónicos, serialización de `ActorTranscript`.
 
@@ -208,12 +218,5 @@ Los `.wav` son cache runtime. Con `run.keep_cache=false`, el runner los elimina 
 ```bash
 uv run python main.py --config config/config.yaml --validate-config
 uv run python main.py --config config/config.yaml --dry-run
-uv run pytest tests/test_audio_fetcher_*.py \
-  tests/test_speaker_timestamps_service.py \
-  tests/test_transcribe_speech_service.py \
-  tests/test_speech2text_service.py \
-  tests/test_transcripcion_actor.py \
-  tests/test_whisper_clip_transcriber.py \
-  tests/test_actor_transcript_serializacion.py \
-  tests/test_speech2text_quality.py -q
+uv run pytest tests/speech2text/ -q
 ```

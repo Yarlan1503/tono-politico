@@ -9,7 +9,7 @@ speech2text
   audio_fetcher         playlist + .wav (yt-dlp)
   speaker_timestamps    pyannote exclusive + match actor
   transcribe_speech     Whisper large-v3-turbo por clip del actor
-        → ActorTranscript (actor_transcript.v1, turn-level, + fecha)
+        → ActorTranscript (actor_transcript.v1, turn-level, + source metadata)
 discursive_approach
   argument_shape        1 audio → Argumento[] (spaCy + LFM2.5)
   topics_cluster        corpus → ResultadoTemas (BERTopic)
@@ -21,7 +21,7 @@ discursive_approach
 
 | Componente | Estado | Tests (aprox.) | Salida |
 |---|---|---:|---|
-| **speech2text** | ✅ + smoke real | 67 | `ActorTranscript` turn-level (+ fecha) + `quality.json` |
+| **speech2text** | ✅ + smoke real | — | `ActorTranscript` + provenance + `quality.json` |
 | · audio_fetcher | ✅ | (suite speech2text) | `VideoMeta`, `.wav` cache |
 | · speaker_timestamps | ✅ | (suite speech2text) | `TurnoOrador[]` actor |
 | · transcribe_speech | ✅ | (suite speech2text) | `ActorTranscript` |
@@ -31,9 +31,9 @@ discursive_approach
 | · topics_approach | ⚠️ bloqueado | — | Depende de lógica retirada |
 | **execution** (control plane) | ✅ | 30 | `RunConfig`, `ExecutionPlan`, artefactos |
 
-Verificación local: **`221 passed, 1 skipped, 4 deselected`** (`-m "not slow"`). Gate: `bash check.sh`.
+Verificación local: **`191 passed, 1 skipped`** con las dos suites legacy de `discursive_approach` excluidas por imports retirados. Ruff y formato pasan; `ty` conserva seis errores de esos mismos imports legacy. Gate: `bash check.sh`.
 
-**Smoke real de speech2text (Play-PoliTest):** 7/7 videos, 195 turnos del actor. `discursive_approach` queda bloqueado hasta reconstruir sus dependencias.
+**Smoke real de metadata (Play-PoliTest):** 3/3 vídeos cortos seleccionados, stage `speech2text=ok`, 34 segmentos, provenance verificada en transcript, manifest, checkpoint y quality. El quick original de tres vídeos incluía un vídeo largo y excedió el timeout de 600 s durante ASR.
 
 Limpieza: `bash clean.sh` (output/ + data/ + caches Python). Filtros: `--output`, `--data`, `--caches`. Dry-run: `--dry-run`. Sin confirmación: `-y`.
 
@@ -48,7 +48,7 @@ uv run python main.py --config config/config.yaml --dry-run
 
 # Ejecutar pipeline completo
 uv run python main.py --config config/config.yaml
-# → output/<run_id>/speech2text/actor_transcripts/ + speech2text/quality.json + manifest.json
+# → output/<run_id>/speech2text/actor_transcripts/ + checkpoint.json + quality.json + manifest.json
 ```
 
 `run.stages` conserva la secuencia declarativa `speech2text` → `argument_shape` → `topics_cluster` → `topics_approach`, pero las etapas discursivas quedan bloqueadas hasta reconstruir sus contratos. La ruta activa es `speech2text`; permite `--dry-run`, `--validate-config`, reanudar por artefactos, recomputar con `run.overwrite`, limitar smoke runs con `run.max_videos` / `run.only_video_ids`, y controlar cache `.wav` con `run.keep_cache`.
@@ -62,7 +62,7 @@ por video: fetch_one → speaker_timestamps → transcribe_speech
          → ActorTranscript (actor_transcript.v1)
 ```
 
-- **audio_fetcher:** yt-dlp playlist + `.wav` (cache en `data/<playlist>/videos-…/`).
+- **audio_fetcher:** yt-dlp playlist + `.wav` (cache en `data/<playlist>/videos-…/`), con nombre visible/cache y fuente explícita de fecha.
 - **speaker_timestamps:** Community-1 `exclusive_speaker_diarization` + match coseno al perfil (0.5 / 0.7).
 - **transcribe_speech:** Whisper `large-v3-turbo` **solo en clips del actor**, `word_timestamps=False`.
 - Doc: [`docs/module-speech2text.md`](docs/module-speech2text.md).
@@ -101,7 +101,7 @@ src/tono_politico/
 │   └── models.py          # RunConfig, StageResult, ExecutionPlan, UnitResult
 ├── speech2text/           # autocontenido: audio → ActorTranscript ✅
 │   ├── service.py         # SpeechToTextService
-│   ├── models.py          # ActorTranscript, TurnoOrador, PerfilVozActor, SpeakerMatch
+│   ├── models.py          # ActorTranscript, TranscriptSource y compatibilidad de DTOs
 │   ├── requisitos.md      # checklist + viabilidad
 │   ├── audio_fetcher/     # playlist + descarga .wav
 │   │   ├── models.py      # VideoMeta, AudioVideo, DownloadResult, PlaylistInfo
@@ -109,6 +109,7 @@ src/tono_politico/
 │   │   ├── audio.py       # descarga + cache
 │   │   └── service.py     # AudioFetcherService
 │   ├── speaker_timestamps/# pyannote + match actor (diarización del actor)
+│   │   ├── models.py      # DTOs canónicos de diarización/matching
 │   │   ├── service.py     # SpeakerTimestampsService + load_pyannote_pipeline
 │   │   ├── matching.py    # identificar_actor, clasificar_speaker, distancia_coseno
 │   │   └── perfil_voz.py  # construir_perfil_desde_output

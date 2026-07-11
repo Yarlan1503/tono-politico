@@ -1,0 +1,39 @@
+schema_version: "tono-politico.run.v1"
+
+run:
+  id: null
+  stages: [speech2text]
+  resume: true
+  overwrite: false
+  keep_cache: false
+  fail_fast: false
+  max_videos: 3
+  only_video_ids: []
+
+input:
+  playlist_url: "https://www.youtube.com/playlist?list=PLE9Zk7g9R__M"
+
+output:
+  base_dir: "output"
+  persist_resolved_config: true
+  persist_manifest: true
+
+project:
+  data_dir: "data"
+  idioma: "es"
+  random_state: 42
+
+speech2text:
+  enabled: true
+  speaker_timestamps:
+    actor_objetivo: "Lilly Téllez"
+    pipeline: "pyannote/speaker-diarization-community-1"
+    fallback_pipeline: "pyannote-community/speaker-diarization-community-1"
+    device: "auto"
+    umbral_match: 0.5
+    umbral_ambiguo: 0.7
+    referencia_voz:
+      video_id: "su9nURIj9XQ"
+  transcribe_speech:
+    whisper_model: "large-v3-turbo"
+    idioma: "es"

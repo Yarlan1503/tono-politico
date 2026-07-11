@@ -7,7 +7,12 @@ from pathlib import Path
 from typing import Any
 
 from tono_politico.discursive_approach.argument_shape.models import Argumento, Oracion
-from tono_politico.speech2text.models import ActorTranscript, ActorTranscriptSegment, AsrMetadata
+from tono_politico.speech2text.models import (
+    ActorTranscript,
+    ActorTranscriptSegment,
+    AsrMetadata,
+    TranscriptSource,
+)
 
 from .models import ArtifactKey, ArtifactPaths, RunConfig
 
@@ -143,6 +148,30 @@ def _segment_from_dict(data: dict[str, Any]) -> ActorTranscriptSegment:
     )
 
 
+def _source_to_dict(source: TranscriptSource) -> dict[str, str | None]:
+    return {
+        "playlist_name": source.playlist_name,
+        "playlist_id": source.playlist_id,
+        "playlist_url": source.playlist_url,
+        "video_title": source.video_title,
+        "video_url": source.video_url,
+        "upload_date": source.upload_date,
+        "date_source": source.date_source,
+    }
+
+
+def _source_from_dict(data: dict[str, Any]) -> TranscriptSource:
+    return TranscriptSource(
+        playlist_name=data.get("playlist_name"),
+        playlist_id=data.get("playlist_id"),
+        playlist_url=data.get("playlist_url"),
+        video_title=data.get("video_title"),
+        video_url=data.get("video_url"),
+        upload_date=data.get("upload_date"),
+        date_source=data.get("date_source"),
+    )
+
+
 def actor_transcript_to_dict(transcript: ActorTranscript) -> dict[str, Any]:
     """Serializa ``ActorTranscript`` al contrato JSON actor_transcript.v1."""
     data: dict[str, Any] = {
@@ -159,6 +188,8 @@ def actor_transcript_to_dict(transcript: ActorTranscript) -> dict[str, Any]:
     }
     if transcript.fecha is not None:
         data["fecha"] = transcript.fecha
+    if transcript.source is not None:
+        data["source"] = _source_to_dict(transcript.source)
     return data
 
 
@@ -196,6 +227,7 @@ def actor_transcript_from_json(json_str: str) -> ActorTranscript:
         ),
         segments=[_segment_from_dict(segment) for segment in data.get("segments", [])],
         fecha=data.get("fecha"),
+        source=_source_from_dict(data["source"]) if isinstance(data.get("source"), dict) else None,
     )
 
 
