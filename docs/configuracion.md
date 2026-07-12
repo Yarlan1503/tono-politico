@@ -59,14 +59,14 @@ speech2text:
 
 ### Diarización / actor
 
-- **Implementado:** tests cubren models, adapter, perfil de voz, matching, service, transcripción actor-only, clip transcriber Whisper+ffmpeg y serialización actor_transcript.v1.
-- El pipeline primary es `pyannote/speaker-diarization-community-1`; si falla, el adapter intenta el fallback `pyannote-community/speaker-diarization-community-1`.
+- **Implementado:** tests cubren models, perfil de voz, matching, service, transcripción actor-only, clip transcriber Whisper+ffmpeg y serialización actor_transcript.v1.
+- El pipeline primary es `pyannote/speaker-diarization-community-1`; si falla, `speaker_timestamps.service` intenta el fallback `pyannote-community/speaker-diarization-community-1`.
 - `device: "auto"` usa CUDA si está disponible y CPU si no.
 - El perfil de voz se construye desde `output.speaker_embeddings` seleccionando el speaker dominante.
 - Para el perfil de voz se toma un solo audio de referencia de la misma playlist: `su9nURIj9XQ`.
 - Si el match de speaker contra el perfil es ambiguo, ese speaker se trata como no-actor y el pipeline continúa.
 - La salida contiene únicamente texto atribuido al actor objetivo.
-- **Transcripción por clips:** `WhisperFfmpegClipTranscriber` recorta cada turno pyannote a un WAV temporal normalizado (mono 16 kHz PCM) con ffmpeg, lo transcribe con Whisper (`word_timestamps=False`), y reubica los timestamps al timeline absoluto.
+- **Transcripción por unidades:** `speaker_timestamps` fusiona participaciones consecutivas del mismo speaker antes del ASR; `WhisperFfmpegClipTranscriber` recorta cada unidad a un WAV temporal normalizado (mono 16 kHz PCM), salvo el speaker único validado, que recibe el audio completo. Whisper (`word_timestamps=False`) reubica los timestamps al timeline absoluto.
 - **Thresholds:** `umbral_match=0.5` y `umbral_ambiguo=0.7` basados en pyannote 3.1 (0.7046), distribuciones VoxCeleb/SpeechBrain y smoke Play-PoliTest.
 
 ## discursive_approach

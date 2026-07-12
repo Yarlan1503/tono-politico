@@ -11,8 +11,8 @@
 `speech2text` convierte audio de una playlist en transcripciones únicamente de las participaciones del actor objetivo. El módulo separa tres responsabilidades:
 
 1. `audio_fetcher`: descubre la playlist y descarga/cachea `.wav`.
-2. `speaker_timestamps`: diariza el audio, construye el perfil de referencia e identifica los turnos del actor.
-3. `transcribe_speech`: recorta cada turno del actor y lo transcribe con Whisper.
+2. `speaker_timestamps`: diariza el audio, construye el perfil de referencia, identifica al actor y normaliza sus unidades temporales.
+3. `transcribe_speech`: transcribe con Whisper cada unidad temporal del actor que entrega `speaker_timestamps`; los bloques ya fusionados se procesan una sola vez y un audio de speaker único puede llegar como unidad completa.
 
 El módulo no realiza segmentación semántica, descubrimiento de temas, clasificación de tono ni filtrado temático. Esas tareas pertenecen a `discursive_approach` y etapas posteriores.
 
@@ -33,10 +33,10 @@ ExecutionRunner
             │       └── AudioVideo | None
             │
             ├── SpeakerTimestampsService.procesar_one()
-            │       └── TurnoOrador[] del actor
+            │       └── TurnoOrador[] normalizados del actor
             │
             └── TranscribeSpeechService.procesar_one()
-                    └── ActorTranscript | None
+                    └── Whisper por unidad → ActorTranscript | None
 
     └── Speech2TextQualityReport → speech2text/quality.json
 ```

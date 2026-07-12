@@ -23,7 +23,7 @@ discursive_approach
 |---|---|---:|---|
 | **speech2text** | ✅ + smoke real | — | `ActorTranscript` + provenance + `quality.json` |
 | · audio_fetcher | ✅ | (suite speech2text) | `VideoMeta`, `.wav` cache |
-| · speaker_timestamps | ✅ | (suite speech2text) | `TurnoOrador[]` actor |
+| · speaker_timestamps | ✅ | (suite speech2text) | `TurnoOrador[]` actor normalizados |
 | · transcribe_speech | ✅ | (suite speech2text) | `ActorTranscript` |
 | **discursive_approach** | ⚠️ bloqueado | — | Pendiente de desacoplar/reconstruir |
 | · argument_shape | ⚠️ bloqueado | — | Ruta dependiente temporalmente inactiva |

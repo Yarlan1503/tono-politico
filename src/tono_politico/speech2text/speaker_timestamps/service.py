@@ -210,7 +210,7 @@ class SpeakerTimestampsService:
         pipeline = self._get_pipeline()
         output = run_pyannote_pipeline(pipeline, str(audio.audio_path))
 
-        turnos = _extraer_turnos(output, audio.video_id)
+        turnos = fusionar_turnos_consecutivos(_extraer_turnos(output, audio.video_id))
         if not turnos:
             logger.info("Video %s: sin turnos diarizados", audio.video_id)
             return []
@@ -230,6 +230,23 @@ class SpeakerTimestampsService:
         if not speakers_actor:
             logger.info("Video %s: actor no identificado", audio.video_id)
             return []
+
+        speakers_detectados = {turno.speaker_id for turno in turnos}
+        if len(speakers_detectados) == 1 and speakers_actor == speakers_detectados:
+            speaker_id = next(iter(speakers_detectados))
+            logger.info(
+                "Video %s: un único speaker actor (%s); se transcribe el audio completo",
+                audio.video_id,
+                speaker_id,
+            )
+            return [
+                TurnoOrador(
+                    video_id=audio.video_id,
+                    speaker_id=speaker_id,
+                    t_start=0.0,
+                    t_end=audio.duracion,
+                )
+            ]
 
         turnos_actor = [t for t in turnos if t.speaker_id in speakers_actor]
         logger.info(
@@ -276,6 +293,32 @@ def _extraer_turnos(output: Any, video_id: str) -> list[TurnoOrador]:
             )
         )
     return turnos
+
+
+def fusionar_turnos_consecutivos(turnos: list[TurnoOrador]) -> list[TurnoOrador]:
+    """Une turnos adyacentes del mismo speaker sin cruzar videos."""
+    if not turnos:
+        return []
+
+    video_ids = {turno.video_id for turno in turnos}
+    if len(video_ids) != 1:
+        raise ValueError("no se pueden fusionar turnos de distintos videos")
+
+    resultado: list[TurnoOrador] = []
+    actual = turnos[0]
+    for siguiente in turnos[1:]:
+        if siguiente.speaker_id == actual.speaker_id:
+            actual = TurnoOrador(
+                video_id=actual.video_id,
+                speaker_id=actual.speaker_id,
+                t_start=min(actual.t_start, siguiente.t_start),
+                t_end=max(actual.t_end, siguiente.t_end),
+            )
+        else:
+            resultado.append(actual)
+            actual = siguiente
+    resultado.append(actual)
+    return resultado
 
 
 def _extraer_embeddings(output: Any) -> dict[str, list[float]]:

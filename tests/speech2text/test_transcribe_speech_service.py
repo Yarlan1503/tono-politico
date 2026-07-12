@@ -79,6 +79,18 @@ class TestTranscribeSpeechService:
         assert fake.calls == [(1.0, 3.0)]
         assert tx.fecha == "20260101"
 
+    def test_unidad_de_audio_completo_se_transcribe_una_vez(self, tmp_path: Path) -> None:
+        fake = FakeTranscriber("audio completo")
+        svc = TranscribeSpeechService(actor="Actor", transcriptor=fake)
+        tx = svc.procesar_one(
+            _audio(tmp_path),
+            [TurnoOrador("v1", "SPEAKER_00", 0.0, 30.0)],
+        )
+
+        assert tx is not None
+        assert fake.calls == [(0.0, 30.0)]
+        assert len(tx.segments) == 1
+
     def test_con_texto_conserva_source_metadata(self, tmp_path: Path) -> None:
         svc = TranscribeSpeechService(actor="Actor", transcriptor=FakeTranscriber())
 

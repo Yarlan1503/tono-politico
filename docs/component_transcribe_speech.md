@@ -2,7 +2,7 @@
 
 > **Ruta:** `src/tono_politico/speech2text/transcribe_speech/`
 >
-> **Responsabilidad:** convertir los turnos del actor en texto mediante clips temporales de Whisper.
+> **Responsabilidad:** convertir las unidades temporales del actor en texto mediante Whisper.
 >
 > **No hace:** descubrir playlists, diarizar audio, identificar speakers ni realizar análisis temático.
 
@@ -12,7 +12,7 @@
 AudioVideo + TurnoOrador[] del actor
     │
     ▼ transcribir_turnos_actor()
-por cada turno
+por cada unidad temporal
     ├── calcular límites del clip
     ├── ffmpeg → WAV temporal mono, 16 kHz, PCM
     ├── Whisper → segmentos relativos al clip
@@ -47,11 +47,11 @@ class TranscribeSpeechService:
     ) -> ActorTranscript | None: ...
 ```
 
-`procesar_one()` devuelve `None` si no hay turnos o si ningún clip produce texto. El transcriptor se inyecta en tests; en runtime se crea perezosamente `WhisperFfmpegClipTranscriber`.
+`procesar_one()` devuelve `None` si no hay unidades o si ningún clip produce texto. En el caso de un único speaker validado, recibe una unidad `[0, duración]` y ejecuta una sola transcripción sobre el audio completo. El transcriptor se inyecta en tests; en runtime se crea perezosamente `WhisperFfmpegClipTranscriber`.
 
 ### `transcribir_turnos_actor`
 
-Módulo: `transcripcion_actor.py`.
+Módulo: `actor_clip.py`.
 
 ```python
 def transcribir_turnos_actor(
@@ -107,7 +107,7 @@ El padding es `0.0` por default. Si se configura:
 - el final se limita a `duracion_audio` cuando está disponible;
 - los límites originales del turno pyannote se mantienen como fuente contractual.
 
-Los segmentos de Whisper relativos al clip se reubican al timeline absoluto y se clamped dentro del turno original del actor.
+Los segmentos de Whisper relativos al clip se reubican al timeline absoluto y se clamped dentro de la unidad temporal recibida; en el caso de audio completo, los límites son `[0, duración]`.
 
 ## Contrato `ActorTranscript`
 
@@ -143,8 +143,8 @@ Los segmentos cortos y fórmulas como `Gracias.` se conservan. Su medición pert
 
 | Archivo | Responsabilidad |
 |---|---|
-| `transcripcion_actor.py` | protocolo de clip, composición y timestamps |
-| `whisper_clip.py` | ffmpeg temporal + adaptador Whisper |
+| `actor_clip.py` | protocolo de clip, composición y timestamps |
+| `transcription_clip.py` | ffmpeg temporal + adaptador Whisper |
 | `service.py` | fachada de configuración e inyección |
 | `__init__.py` | exports públicos del subpaquete |
 

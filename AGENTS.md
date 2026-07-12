@@ -57,9 +57,9 @@ Limpieza: `bash clean.sh` (output/ + data/ + caches Python, con confirmación). 
 - Stages canónicos: `speech2text`, `argument_shape`, `topics_cluster`, `topics_approach`.
 - Artefactos: `output/<run_id>/speech2text/actor_transcripts/`, `speech2text/checkpoint.json`, `speech2text/quality.json`, `discursive/argumentos.json`, `discursive/discursive-temas.json`, `discursive/discursive-enfoques.json`, `manifest.json`, `resolved-config.yaml`.
 - `run.max_videos` y `run.only_video_ids` filtran la etapa `speech2text` después del discover; `run.keep_cache=false` borra `.wav` runtime al terminar cada unidad/ref, `true` los conserva para debug.
-- **speech2text:** `audio_fetcher` + `speaker_timestamps` + `transcribe_speech` → `ActorTranscript` turn-level con `TranscriptSource` opcional y provenance en control plane. Tests de dominio: `tests/speech2text/` (`118 passed`); tests cross-cutting de ejecución en `tests/` (`18 passed`). Documentación: `docs/module-speech2text.md` y `docs/component_*.md`. Smoke Play-PoliTest: 3/3 vídeos cortos, 34 segmentos, provenance verificada.
+- **speech2text:** `audio_fetcher` + `speaker_timestamps` + `transcribe_speech` → `ActorTranscript` turn-level con `TranscriptSource` opcional y provenance en control plane. `speaker_timestamps` fusiona unidades consecutivas del mismo speaker y usa `[0, duración]` cuando el único speaker validado es el actor. Tests de dominio: `tests/speech2text/` (`123 passed`); tests cross-cutting de ejecución en `tests/` (`18 passed`). Documentación: `docs/module-speech2text.md` y `docs/component_*.md`. Smoke Play-PoliTest: 3/3 vídeos cortos, 34 segmentos, provenance verificada.
 - **discursive_approach:** `argument_shape` → `topics_cluster` → `topics_approach` está temporalmente bloqueado; sus dependencias legacy fueron retiradas y se reconstruirá después.
-- ASR en speech2text: Whisper `large-v3-turbo` **por clip del actor** con `word_timestamps=False`.
+- ASR en speech2text: Whisper `large-v3-turbo` **por unidad temporal del actor** con `word_timestamps=False`; un speaker único validado usa el audio completo.
 - Diarización (stack interno): Community-1, `device=auto`, thresholds 0.5 / 0.7; ambiguo → descartar.
 - Si cambia un default en código, actualizar también `config/config.yaml`, `README.md`, `AGENTS.md` y `docs/`.
 
@@ -84,15 +84,15 @@ src/tono_politico/
 │   │   ├── playlist.py    # obtener_info_playlist → (PlaylistInfo, list[VideoMeta])
 │   │   ├── audio.py       # verificar_cache_videos, descargar_audio_result
 │   │   └── service.py     # AudioFetcherService
-│   ├── speaker_timestamps/ # pyannote + match actor → TurnoOrador[]
+│   ├── speaker_timestamps/ # pyannote + match + fusión → TurnoOrador[]
 │   │   ├── models.py      # DTOs canónicos de diarización/matching
 │   │   ├── service.py     # SpeakerTimestampsService
 │   │   ├── matching.py    # identificar_actor, clasificar_speaker
 │   │   └── perfil_voz.py  # construir_perfil_desde_output
-│   └── transcribe_speech/ # Whisper clips → ActorTranscript (+ fecha)
+│   └── transcribe_speech/ # Whisper por unidad → ActorTranscript (+ fecha)
 │       ├── models.py      # DTOs del transcriptor
-│       ├── actor_clip.py  # recorte y persistencia de clips actor-only
-│       ├── transcription_clip.py # transcripción Whisper por clip
+│       ├── actor_clip.py  # recorte y persistencia de unidades actor-only
+│       ├── transcription_clip.py # transcripción Whisper por unidad/clip
 │       └── service.py     # TranscribeSpeechService
 ├── discursive_approach/   # ActorTranscript → temas + enfoques ⚠️ bloqueado
 │   ├── service.py         # DiscursiveApproachService
@@ -149,8 +149,8 @@ Doc: `docs/module-speech2text.md` · Componentes: `docs/component_*.md` · Requi
 |---|---|---|
 | `SpeechToTextService` | `speech2text/service.py` | Orquesta discover + perfil + procesar_one |
 | `AudioFetcherService` | `audio_fetcher/service.py` | `discover` / `fetch_one` → `AudioVideo` |
-| `SpeakerTimestampsService` | `speaker_timestamps/service.py` | pyannote exclusive + match → turnos actor |
-| `TranscribeSpeechService` | `transcribe_speech/service.py` | Whisper clips → `ActorTranscript` |
+| `SpeakerTimestampsService` | `speaker_timestamps/service.py` | pyannote exclusive + fusión + match → unidades actor |
+| `TranscribeSpeechService` | `transcribe_speech/service.py` | Whisper por unidad → `ActorTranscript` |
 
 ### discursive_approach — ⚠️ bloqueado temporalmente
 
@@ -171,8 +171,9 @@ Diarización pyannote + identificación del actor. **No es un subpaquete separad
 
 | Función/Clase | Módulo | Responsabilidad |
 |---|---|---|
-| `SpeakerTimestampsService` | `speaker_timestamps/service.py` | Orquesta pyannote → turnos del actor |
-| `load_pyannote_pipeline` | `speaker_timestamps/adapter.py` | Carga primary/fallback + device + ProgressHook |
+| `SpeakerTimestampsService` | `speaker_timestamps/service.py` | Orquesta pyannote, fusión y match → unidades actor |
+| `load_pyannote_pipeline` | `speaker_timestamps/service.py` | Carga primary/fallback + device + ProgressHook |
+| `fusionar_turnos_consecutivos` | `speaker_timestamps/service.py` | Une tramos adyacentes del mismo speaker sin cruzar videos |
 | `identificar_actor` | `speaker_timestamps/matching.py` | Compara speakers contra el perfil → `list[SpeakerMatch]` |
 | `construir_perfil_desde_output` | `speaker_timestamps/perfil_voz.py` | Speaker dominante desde `speaker_embeddings` |
 

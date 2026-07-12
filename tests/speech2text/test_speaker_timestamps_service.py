@@ -12,11 +12,16 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from tono_politico.speech2text.audio_fetcher.models import AudioVideo
-from tono_politico.speech2text.models import PerfilVozActor, SpeakerMatch
+from tono_politico.speech2text.models import (
+    PerfilVozActor,
+    SpeakerMatch,
+    TurnoOrador,
+)
 from tono_politico.speech2text.speaker_timestamps.service import (
     PyannotePipelineLoadError,
     SpeakerTimestampsService,
     _extraer_turnos,
+    fusionar_turnos_consecutivos,
     load_pyannote_pipeline,
     run_pyannote_pipeline,
 )
@@ -59,6 +64,29 @@ class TestExtraerTurnos:
         assert len(turnos) == 2
         assert turnos[0].speaker_id == "SPEAKER_00"
         assert turnos[0].t_end == 1.5
+
+
+class TestFusionarTurnos:
+    def test_fusiona_turnos_adyacentes_del_mismo_speaker(self) -> None:
+        turnos = [
+            TurnoOrador("v1", "SPEAKER_00", 0.0, 1.0),
+            TurnoOrador("v1", "SPEAKER_00", 2.0, 3.0),
+        ]
+
+        resultado = fusionar_turnos_consecutivos(turnos)
+
+        assert resultado == [TurnoOrador("v1", "SPEAKER_00", 0.0, 3.0)]
+
+    def test_no_fusiona_a_traves_de_otro_speaker(self) -> None:
+        turnos = [
+            TurnoOrador("v1", "SPEAKER_00", 0.0, 1.0),
+            TurnoOrador("v1", "SPEAKER_01", 1.0, 2.0),
+            TurnoOrador("v1", "SPEAKER_00", 2.0, 3.0),
+        ]
+
+        resultado = fusionar_turnos_consecutivos(turnos)
+
+        assert resultado == turnos
 
 
 class TestSpeakerTimestampsService:
@@ -116,6 +144,76 @@ class TestSpeakerTimestampsService:
 
         assert len(turnos) == 1
         assert turnos[0].speaker_id == "SPEAKER_00"
+
+    def test_procesar_one_fusiona_turnos_actor_consecutivos(self, tmp_path: Path) -> None:
+        svc = SpeakerTimestampsService(actor="Actor")
+        svc.set_perfil(_perfil())
+
+        exclusive = MagicMock()
+        exclusive.itertracks.return_value = [
+            (SimpleNamespace(start=0.0, end=1.0), None, "SPEAKER_00"),
+            (SimpleNamespace(start=2.0, end=3.0), None, "SPEAKER_00"),
+            (SimpleNamespace(start=3.0, end=4.0), None, "SPEAKER_01"),
+        ]
+        diar = MagicMock()
+        diar.labels.return_value = ["SPEAKER_00", "SPEAKER_01"]
+        output = SimpleNamespace(
+            exclusive_speaker_diarization=exclusive,
+            speaker_diarization=diar,
+            speaker_embeddings=[[1.0, 0.0], [0.0, 1.0]],
+        )
+        matches = [
+            SpeakerMatch("SPEAKER_00", 0.1, True, False),
+            SpeakerMatch("SPEAKER_01", 0.9, False, False),
+        ]
+
+        with (
+            patch.object(svc, "_get_pipeline", return_value="pipe"),
+            patch(
+                "tono_politico.speech2text.speaker_timestamps.service.run_pyannote_pipeline",
+                return_value=output,
+            ),
+            patch(
+                "tono_politico.speech2text.speaker_timestamps.service.identificar_actor",
+                return_value=matches,
+            ),
+        ):
+            turnos = svc.procesar_one(_audio(tmp_path))
+
+        assert turnos == [TurnoOrador("vid1", "SPEAKER_00", 0.0, 3.0)]
+
+    def test_procesar_one_speaker_unico_devuelve_audio_completo(self, tmp_path: Path) -> None:
+        svc = SpeakerTimestampsService(actor="Actor")
+        svc.set_perfil(_perfil())
+
+        exclusive = MagicMock()
+        exclusive.itertracks.return_value = [
+            (SimpleNamespace(start=1.0, end=2.0), None, "SPEAKER_00"),
+            (SimpleNamespace(start=4.0, end=5.0), None, "SPEAKER_00"),
+        ]
+        diar = MagicMock()
+        diar.labels.return_value = ["SPEAKER_00"]
+        output = SimpleNamespace(
+            exclusive_speaker_diarization=exclusive,
+            speaker_diarization=diar,
+            speaker_embeddings=[[1.0, 0.0]],
+        )
+        matches = [SpeakerMatch("SPEAKER_00", 0.1, True, False)]
+
+        with (
+            patch.object(svc, "_get_pipeline", return_value="pipe"),
+            patch(
+                "tono_politico.speech2text.speaker_timestamps.service.run_pyannote_pipeline",
+                return_value=output,
+            ),
+            patch(
+                "tono_politico.speech2text.speaker_timestamps.service.identificar_actor",
+                return_value=matches,
+            ),
+        ):
+            turnos = svc.procesar_one(_audio(tmp_path))
+
+        assert turnos == [TurnoOrador("vid1", "SPEAKER_00", 0.0, 10.0)]
 
     def test_procesar_one_rechaza_embeddings_inconsistentes(self, tmp_path: Path) -> None:
         svc = SpeakerTimestampsService()

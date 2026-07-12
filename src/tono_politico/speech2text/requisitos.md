@@ -9,16 +9,16 @@
 `speech2text` convierte una playlist en transcripciones **actor-only** y **turn-level**.
 
 ```text
-playlist → discover → audio WAV → diarización/match → clips Whisper → ActorTranscript[]
+playlist → discover → audio WAV → diarización/match/fusión → unidades Whisper → ActorTranscript[]
 ```
 
 - [x] Descubre metadata sin descargar audio.
 - [x] Descarga/reutiliza `.wav` con validación de archivo regular.
-- [x] Construye perfil de voz y selecciona turnos del actor.
-- [x] Ejecuta ASR solo sobre clips del actor.
+- [x] Construye perfil de voz, fusiona participaciones consecutivas y selecciona unidades del actor.
+- [x] Ejecuta ASR solo sobre unidades del actor; un speaker único validado usa el audio completo.
 - [x] Persiste `ActorTranscript`; la observabilidad y el manifest pertenecen a `execution/`.
 - [x] No hace segmentación semántica, temas, tono ni filtrado temático.
-- [x] No usa Whisper full-video ni persiste word-level timestamps/probabilities.
+- [x] No usa Whisper full-video como camino general ni persiste word-level timestamps/probabilities; el caso de speaker único validado sí transcribe el audio completo.
 - [x] Conserva segmentos cortos; no aplica filtros sin datos etiquetados.
 
 ## 2. Flujo y ownership
@@ -31,7 +31,7 @@ ExecutionRunner
   └─ por cada VideoMeta seleccionado
        ├─ si resume + transcript válido → saltar (resumed_from_cache)
        ├─ AudioFetcherService.fetch_one() → AudioVideo | None
-       ├─ SpeakerTimestampsService.procesar_one() → TurnoOrador[]
+       ├─ SpeakerTimestampsService.procesar_one() → TurnoOrador[] normalizados
        ├─ TranscribeSpeechService.procesar_one() → ActorTranscript | None
        ├─ UnitResult(status, reason_code, timings)
        └─ checkpoint incremental → speech2text/checkpoint.json
@@ -77,6 +77,8 @@ ExecutionRunner
 ### Diarización
 
 - [x] `TurnoOrador`: `video_id`, `speaker_id`, `t_start`, `t_end`.
+- [x] Participaciones adyacentes con el mismo `speaker_id` se fusionan antes del matching/filtro actor.
+- [x] Si existe un único speaker y coincide con el perfil, se devuelve una unidad `[0, audio.duracion]`.
 - [x] `PerfilVozActor`: actor, video de referencia, embedding, modelo y duración.
 - [x] `SpeakerMatch`: speaker, distancia, aceptación y ambigüedad.
 - [x] Un match ambiguo se descarta.
@@ -85,7 +87,7 @@ ExecutionRunner
 
 `schema_version`, `video_id`, `actor`, `scope="actor_only"`, `AsrMetadata`, `segments`, `fecha` y `source` opcional.
 
-Cada segmento contiene `text`, timestamps absolutos, `speaker`, `source_turn_start`, `source_turn_end` y `word_count`.
+Cada segmento contiene `text`, timestamps absolutos, `speaker`, `source_turn: {t_start, t_end}` y `word_count`; el loader también acepta la forma plana legacy `source_turn_start`/`source_turn_end`.
 
 - [x] Solo contiene texto atribuido al actor.
 - [x] Conserva los límites del turno pyannote y propaga `fecha`.
@@ -135,6 +137,7 @@ APIs canónicas:
 - [x] `SpeechToTextService.discover`, `ensure_perfil`, `procesar_one`.
 - [x] `AudioFetcherService.discover`, `fetch_one`.
 - [x] `SpeakerTimestampsService.build_perfil`, `set_perfil`, `procesar_one`.
+- [x] `fusionar_turnos_consecutivos` es una función pura y no cruza `video_id`.
 - [x] `TranscribeSpeechService.procesar_one`.
 - [x] `construir_perfil_desde_output`, `transcribir_turnos_actor`.
 - [x] `WhisperFfmpegClipTranscriber.transcribir_clip`.
@@ -163,6 +166,7 @@ APIs canónicas:
 ### `transcribe_speech`
 
 - [x] `actor_clip.py`: recibe turnos del actor, aplica padding acotado y mapea timestamps.
+- [x] Cada `TurnoOrador` recibido representa un bloque actor-only ya normalizado o el audio completo.
 - [x] `transcription_clip.py`: ffmpeg mono 16 kHz PCM + Whisper con `word_timestamps=False`.
 - [x] Cachea modelos, elimina temporales en `finally` y omite texto vacío.
 - [x] `models.py`: `ClipTranscriptSegment`, `ClipTranscriber` (Protocol), `ClipWindow`.
@@ -265,6 +269,7 @@ uv run python main.py --config config/config.yaml --dry-run          # ✅
 - [x] `resume` no confunde directorios vacíos con artefactos completos.
 - [x] Cache y output se validan como archivos/contratos, no sólo por `exists()`.
 - [x] `speaker_timestamps/service.py` carga el modelo; `matching.py` valida resultados.
+- [x] `speaker_timestamps/service.py` fusiona la secuencia completa antes de filtrar al actor.
 - [x] `actor_clip.py` preserva el mapeo entre audio editado y timestamps originales.
 - [x] Checkpoint incremental por vídeo + fingerprint de configuración en manifest.
 - [x] Coerción de booleanos type-safe en `execution/models.py`.

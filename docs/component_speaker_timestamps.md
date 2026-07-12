@@ -2,7 +2,7 @@
 
 > **Ruta:** `src/tono_politico/speech2text/speaker_timestamps/`
 >
-> **Responsabilidad:** diarizar el audio, construir el perfil de voz de referencia e identificar los turnos del actor objetivo.
+> **Responsabilidad:** diarizar el audio, construir el perfil de voz de referencia, identificar al actor y normalizar sus unidades temporales de transcripción.
 >
 > **No hace:** descargar playlists, ejecutar Whisper ni producir texto.
 
@@ -16,9 +16,12 @@ AudioVideo (WAV)
     │
     └── procesar_one(audio)
             ├── pyannote exclusive_speaker_diarization
+            ├── fusionar_turnos_consecutivos() sobre la secuencia completa
             ├── embeddings por speaker
             ├── distancia coseno contra PerfilVozActor
-            └── TurnoOrador[] aceptados como actor
+            └── TurnoOrador[] actor normalizados
+                    ├── bloques consecutivos del mismo speaker
+                    └── [0, duración] si sólo existe un speaker actor
 ```
 
 El perfil se construye una vez por corrida desde el audio de referencia. `SpeechToTextService.ensure_perfil()` es quien obtiene ese audio desde `audio_fetcher`.
@@ -61,11 +64,11 @@ Permite inyectar un perfil ya construido, principalmente para tests o reuso cont
 
 ### `procesar_one`
 
-Requiere que exista un perfil. Devuelve una lista vacía cuando no hay turnos, embeddings o un speaker aceptado como el actor. Nunca produce texto.
+Requiere que exista un perfil. Primero fusiona participaciones adyacentes con la misma etiqueta en la secuencia diarizada completa; un speaker intermedio impide la fusión. Después aplica el matching del actor. Si queda un único speaker y coincide con el perfil, devuelve una unidad `[0, audio.duracion]` para que Whisper transcriba el audio completo sin cortes. Devuelve una lista vacía cuando no hay turnos, embeddings o un speaker aceptado como el actor. Nunca produce texto.
 
 ## Pipeline pyannote
 
-`adapter.py` concentra los detalles runtime:
+`service.py` concentra los detalles runtime:
 
 - pipeline principal: `pyannote/speaker-diarization-community-1`;
 - fallback configurable: `pyannote-community/speaker-diarization-community-1`;
@@ -125,7 +128,7 @@ Los DTOs canónicos del componente viven en `speaker_timestamps/models.py`. El m
 
 | DTO | Campos | Propósito |
 |---|---|---|
-| `TurnoOrador` | `video_id`, `speaker_id`, `t_start`, `t_end` | rango temporal diarizado |
+| `TurnoOrador` | `video_id`, `speaker_id`, `t_start`, `t_end` | unidad temporal diarizada, fusionada o de audio completo entregada al ASR |
 | `PerfilVozActor` | `actor`, `video_id_referencia`, `embedding`, `modelo_embedding`, `duracion_segundos` | referencia en memoria |
 | `SpeakerMatch` | `speaker_id`, `distancia`, `aceptado`, `es_ambiguo` | decisión de identidad |
 
@@ -133,16 +136,15 @@ Los DTOs canónicos del componente viven en `speaker_timestamps/models.py`. El m
 
 | Archivo | Responsabilidad |
 |---|---|
-| `adapter.py` | carga/fallback/device/ProgressHook de pyannote |
 | `matching.py` | distancia y clasificación de speakers |
 | `perfil_voz.py` | perfil desde `speaker_embeddings` público |
-| `service.py` | fachada de perfil y diarización por audio |
+| `service.py` | carga/fallback/device/ProgressHook, diarización, fusión y match por audio |
 | `models.py` | DTOs canónicos de diarización y matching |
 | `__init__.py` | exports públicos del subpaquete |
 
 ## Integración con ASR
 
-La salida `TurnoOrador[]` se entrega sin texto a `TranscribeSpeechService`. Los límites `t_start`/`t_end` son la fuente acústica para generar cada clip de Whisper y se conservan después en `source_turn_start`/`source_turn_end` del transcript.
+La salida `TurnoOrador[]` se entrega sin texto a `TranscribeSpeechService`. Cada elemento representa una unidad de ASR: los bloques del mismo speaker ya vienen fusionados, mientras que el caso de speaker único validado usa `[0, audio.duracion]` para transcribir el WAV completo. Sus límites se persisten en `source_turn: {t_start, t_end}`; el loader también acepta la forma plana legacy `source_turn_start`/`source_turn_end`.
 
 ## Tests
 
